@@ -66,6 +66,9 @@ def seed_testhome() -> None:
     ]
     store.current_group = 0
     store.settings.hide_on_blur = False
+    store.settings.columns = 10
+    store.settings.rows = 4
+    store.settings.icon_size = 48
     store.save()
 
 
@@ -256,6 +259,29 @@ def main() -> int:
         check("panel-level drop adds item", panel.model.rowCount() == n_before + 1)
     finally:
         QApplication.activeWindow = app_activeWindow_orig
+
+    # ---------- 11. 边缘拖拽调大小:尺寸回写设置 + 手动尺寸不被收缩 ----------
+    from PySide6.QtCore import QSize
+    from lulen.config import Item as _Item
+    panel.show_panel()
+    wait(200)
+    grid = panel.view.gridSize()
+    w6 = 20 + 2 * panel._shadow_margin + 2 + 6 * grid.width()
+    h4 = (8 + 28 + 6 + 10 + 2 * panel._shadow_margin + 8 + 2) + 4 * grid.height()
+    panel.resize(QSize(int(w6), int(h4)))
+    panel._sync_size_from_window()
+    wait(150)
+    check("edge resize syncs columns", store.settings.columns == 6)
+    check("edge resize syncs rows", store.settings.rows == 4)
+    panel._manual_size = True
+    panel.store.settings.rows = 4
+    panel._update_size()
+    h_before = panel.height()
+    panel.model.add_items([_Item.create("app", f"extra{i}", "x.exe") for i in range(20)])
+    wait(200)
+    check("manual size preserved on item add", panel.height() == h_before)
+    store.settings.columns, store.settings.rows = 10, 4
+
     panel.show_panel()
 
     panel.hide_now()

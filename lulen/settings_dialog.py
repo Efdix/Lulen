@@ -104,12 +104,12 @@ class SettingsWindow(QDialog):
         form_look.addRow("图标大小", self.sp_icon)
 
         self.sp_cols = QSpinBox(self)
-        self.sp_cols.setRange(4, 16)
+        self.sp_cols.setRange(4, 24)
         self.sp_cols.setValue(store.settings.columns)
         form_look.addRow("列数", self.sp_cols)
 
         self.sp_rows = QSpinBox(self)
-        self.sp_rows.setRange(2, 6)
+        self.sp_rows.setRange(2, 8)
         self.sp_rows.setValue(store.settings.rows)
         form_look.addRow("行数", self.sp_rows)
 

@@ -30,6 +30,23 @@ from .theme import Palette, build_palette
 
 _BLUR_GRACE_MS = 1200  # 失焦后隐藏的宽限期:给"点选文件→拖拽"留时间
 _DRAG_RESCHEDULE_MS = 250  # 拖拽进行中时重查间隔
+_EDGE_PX = 7  # 窗口边缘的缩放热区宽度(px)
+
+# Win32 SC_SIZE 目标边(SC_SIZE + 边代号)
+_SC_SIZE = {
+    ("left",): 0xF001, ("right",): 0xF002, ("top",): 0xF003,
+    ("left", "top"): 0xF004, ("top", "right"): 0xF005,
+    ("bottom",): 0xF006, ("left", "bottom"): 0xF007,
+    ("bottom", "right"): 0xF008,
+}
+_CURSOR_BY_EDGE = {
+    ("left",): Qt.CursorShape.SizeHorCursor, ("right",): Qt.CursorShape.SizeHorCursor,
+    ("top",): Qt.CursorShape.SizeVerCursor, ("bottom",): Qt.CursorShape.SizeVerCursor,
+    ("left", "top"): Qt.CursorShape.SizeFDiagCursor,
+    ("bottom", "right"): Qt.CursorShape.SizeFDiagCursor,
+    ("top", "right"): Qt.CursorShape.SizeBDiagCursor,
+    ("left", "bottom"): Qt.CursorShape.SizeBDiagCursor,
+}
 
 _RUN_DIALOG_CLSID = "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"
 _SEARCH_ENGINES = (
@@ -104,6 +121,8 @@ class LulenPanel(QWidget):
         self._drag_source: QWidget | None = None
         self._drag_over = False  # 有 OLE 拖拽悬停在面板上
         self._hiding = False
+        self._user_resizing = False  # 正在原生 SC_SIZE 循环中拖拽边缘
+        self._manual_size = False  # 用户手动拖拽过尺寸:高度不再自动收缩
         self._opacity_base = store.settings.opacity / 100
         self._last_launch: tuple[str, float] = ("", 0.0)
         self._settings_win: SettingsWindow | None = None
@@ -128,6 +147,7 @@ class LulenPanel(QWidget):
         self.group_bar.installEventFilter(self)
         self.group_bar._tabs.installEventFilter(self)
         self.drag_handle.installEventFilter(self)
+        self.root.installEventFilter(self)  # 边缘缩放热区(所有控件就绪后安装)
         self.model.set_group(self.store.group().items)
 
         self._save_timer = QTimer(self)
@@ -149,6 +169,7 @@ class LulenPanel(QWidget):
 
         self.root = QFrame(self)
         self.root.setObjectName("root")
+        self.root.setMouseTracking(True)
         outer.addWidget(self.root)
 
         v = QVBoxLayout(self.root)
@@ -253,13 +274,18 @@ class LulenPanel(QWidget):
         self._update_empty()
 
     def _update_size(self) -> None:
+        if self._user_resizing:
+            return  # 原生拖拽中,不能抢窗口尺寸
         s = self.store.settings
         grid = self.view.gridSize()
         w = s.columns * grid.width() + 20 + 2 * self._shadow_margin + 2
-        # 高度自适应:实际行数 = clamp(ceil(条目数/列数), 1, 设定行数)
-        count = self.model.rowCount()
-        used_rows = max(1, math.ceil(count / max(1, s.columns)))
-        rows = min(max(1, s.rows), used_rows)
+        if self._manual_size:
+            rows = max(2, s.rows)  # 手动调过尺寸:高度完全由设置决定
+        else:
+            # 高度自适应:实际行数 = clamp(ceil(条目数/列数), 1, 设定行数)
+            count = self.model.rowCount()
+            used_rows = max(1, math.ceil(count / max(1, s.columns)))
+            rows = min(max(1, s.rows), used_rows)
         h = 8 + 28 + 6 + rows * grid.height() + 10 + 2 * self._shadow_margin + 8 + 2
         self.resize(QSize(int(w), int(h)))
 
@@ -340,6 +366,50 @@ class LulenPanel(QWidget):
         self.store.settings.pos = [self.x(), self.y()]
         self._touch()
 
+    # ================= 边缘拖拽调大小 =================
+
+    def _edge_at(self, gp: QPoint) -> tuple[str, ...] | None:
+        """全局坐标落在窗口边缘热区时返回边组合,否则 None。"""
+        r = self.frameGeometry()
+        if not (r.left() - 2 <= gp.x() <= r.right() + 2
+                and r.top() - 2 <= gp.y() <= r.bottom() + 2):
+            return None
+        sides: list[str] = []
+        if gp.x() - r.left() <= _EDGE_PX:
+            sides.append("left")
+        if r.right() - gp.x() <= _EDGE_PX:
+            sides.append("right")
+        if gp.y() - r.top() <= _EDGE_PX:
+            sides.append("top")
+        if r.bottom() - gp.y() <= _EDGE_PX:
+            sides.append("bottom")
+        return tuple(sides) or None
+
+    def _start_native_resize(self, sc_size: int) -> None:
+        """进入 Win32 原生调整循环(跟随鼠标实时缩放),结束后把尺寸回写设置。"""
+        self._user_resizing = True
+        try:
+            user32 = ctypes.windll.user32
+            user32.ReleaseCapture()
+            user32.SendMessageW(int(self.winId()), 0x0112, sc_size, 0)  # WM_SYSCOMMAND
+        finally:
+            self._user_resizing = False
+            self._manual_size = True
+            self._sync_size_from_window()
+
+    def _sync_size_from_window(self) -> None:
+        """把当前窗口尺寸换算回列数/行数并持久化(边缘拖拽后的落点)。"""
+        s = self.store.settings
+        grid = self.view.gridSize()
+        cols = round((self.width() - 20 - 2 * self._shadow_margin - 2) / grid.width())
+        rows = round((self.height() - (8 + 28 + 6 + 10 + 2 * self._shadow_margin + 8 + 2))
+                     / grid.height())
+        cols = max(4, min(24, cols))
+        rows = max(2, min(8, rows))
+        if cols != s.columns or rows != s.rows:
+            s.columns, s.rows = cols, rows
+            self._touch()
+
     def event(self, e: QEvent) -> bool:  # noqa: N802
         if self.store.settings.hide_on_blur:
             if e.type() == QEvent.Type.WindowDeactivate:
@@ -416,6 +486,32 @@ class LulenPanel(QWidget):
     # ================= 拖拽移动 / 键盘 / 命令条 =================
 
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
+        try:
+            return self._event_filter_impl(obj, ev)
+        except (RuntimeError, AttributeError):
+            return False  # 对象销毁阶段或构建早期的残缺事件
+
+    def _event_filter_impl(self, obj, ev) -> bool:
+        if getattr(self, "drag_handle", None) is None:
+            return False  # 构建早期,过滤目标尚未创建
+        if obj is self.root:
+            t = ev.type()
+            if t == QEvent.Type.MouseMove and not self.store.settings.locked:
+                sides = self._edge_at(ev.globalPosition().toPoint())
+                if sides is not None:
+                    self.root.setCursor(_CURSOR_BY_EDGE[sides])
+                else:
+                    self.root.unsetCursor()
+                return False
+            if t == QEvent.Type.Leave:
+                self.root.unsetCursor()
+                return False
+            if (t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton
+                    and not self.store.settings.locked):
+                sides = self._edge_at(ev.globalPosition().toPoint())
+                if sides is not None:
+                    self._start_native_resize(_SC_SIZE[sides])
+                    return True
         if obj in (self.drag_handle, self.group_bar):
             t = ev.type()
             if t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:

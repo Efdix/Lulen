@@ -98,9 +98,9 @@ class Settings:
     hotkey: str = "Ctrl+Shift+Z"  # 呼出/隐藏面板的全局热键
     theme: str = "dark"  # dark / light
     accent: str = "#4F8CFF"
-    columns: int = 8
-    rows: int = 3
-    icon_size: int = 44
+    columns: int = 10
+    rows: int = 4
+    icon_size: int = 48
     single_click: bool = True  # 单击启动(否则双击)
     hide_on_blur: bool = True  # 失焦自动隐藏
     hide_after_launch: bool = True
