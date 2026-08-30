@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QColor
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
 
@@ -170,24 +170,25 @@ class GroupBar(QWidget):
         self._store = store
         self._panel = host_panel
 
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(2, 0, 0, 0)
+        lay.setSpacing(2)
+        self._plus = QPushButton("+")
+        self._plus.setObjectName("addTab")
+        self._plus.setToolTip("新建分组")
+        self._plus.setFixedSize(QSize(24, 24))
+        self._plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._plus.clicked.connect(self._panel.new_group)
+
         self._tabs = GroupTabs(store, self)
         self._tabs.currentChanged.connect(self._on_current_changed)
         self._tabs.items_dropped.connect(self.items_dropped.emit)
         self._tabs.rename_requested.connect(self.rename_requested.emit)
         self._tabs.delete_requested.connect(self.delete_requested.emit)
 
-        self._plus = QPushButton("+")
-        self._plus.setObjectName("addTab")
-        self._plus.setToolTip("新建分组")
-        self._plus.setFixedSize(24, 24)
-        self._plus.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._plus.clicked.connect(self._panel.new_group)
-
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(2, 0, 0, 0)
-        lay.setSpacing(2)
-        lay.addWidget(self._tabs, 1)
-        lay.addWidget(self._plus, 0, Qt.AlignmentFlag.AlignTop)
+        lay.addWidget(self._tabs)              # 页签按内容自然宽度,不省略
+        lay.addWidget(self._plus, 0, Qt.AlignmentFlag.AlignTop)   # 紧跟最后一个页签
+        lay.addStretch(1)                      # 剩余空白(空间不足时优先压缩这里)
         self.rebuild()
 
     # ---------- 同步 ----------

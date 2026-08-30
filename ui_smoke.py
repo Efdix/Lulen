@@ -94,7 +94,10 @@ def main() -> int:
     # ---------- 1. 面板与条目 ----------
     check("panel visible", panel.isVisible())
     check("items loaded", panel.model.rowCount() >= 4)
-    check("tabs fill strip width", panel.group_bar._tabs.width() >= 300)
+    from PySide6.QtGui import QFontMetrics
+    fm_tab = QFontMetrics(panel.group_bar._tabs.font())
+    check("first tab not elided", panel.group_bar._tabs.tabRect(0).width()
+          >= fm_tab.horizontalAdvance("Life") + 14)
 
     # ---------- 2. 单击启动(记事本)----------
     idx = panel.model.index(0)
