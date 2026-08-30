@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -58,8 +56,9 @@ def main() -> int:
     check("theme restored", store.settings.theme == old_theme)
 
     # 热键录制控件:模拟捕获序列
-    from PySide6.QtCore import Qt, QEvent
+    from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
+
     from lulen.settings_dialog import HotkeyEdit
     he = HotkeyEdit("Ctrl+Alt+L")
     ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F9, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)

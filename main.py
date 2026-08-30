@@ -19,10 +19,9 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from lulen import APP_NAME, APP_VERSION
+from lulen import APP_NAME, APP_VERSION, singleinstance, theme
 from lulen import hotkey as hk
 from lulen import icons as icons_mod
-from lulen import singleinstance, theme
 from lulen.config import ConfigStore, Group, Item, new_id
 from lulen.hotkey import HotkeyManager
 from lulen.icons import IconService

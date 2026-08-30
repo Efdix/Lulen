@@ -3,10 +3,17 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from .config import Item, guess_name, guess_type
@@ -183,7 +190,7 @@ class ItemDialog(QDialog):
             hotkey=base.hotkey,
         )
 
-    def accept(self) -> None:  # noqa: N802
+    def accept(self) -> None:
         item = self.result_item()
         if item.type != "command" and not item.path:
             self.ed_path.setFocus()

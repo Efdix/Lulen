@@ -8,12 +8,32 @@ import subprocess
 import time
 import urllib.parse
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QPropertyAnimation, QTimer, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QCursor, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
-    QApplication, QDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-    QListView, QMenu, QStackedLayout, QToolButton, QVBoxLayout, QWidget,
     QAbstractItemView,
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QMenu,
+    QStackedLayout,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from . import autostart
@@ -26,7 +46,7 @@ from .icons import IconService
 from .launch import open_containing, open_item
 from .model import MIME_ITEM, ItemsModel
 from .settings_dialog import SettingsWindow
-from .theme import Palette, build_palette
+from .theme import build_palette
 
 _BLUR_GRACE_MS = 1200  # 失焦后隐藏的宽限期:给"点选文件→拖拽"留时间
 _DRAG_RESCHEDULE_MS = 250  # 拖拽进行中时重查间隔
@@ -66,7 +86,7 @@ class GridView(QListView):
     拖动过程由委托绘制指示线,落下判定与指示线共用同一套计算。
     """
 
-    def __init__(self, panel: "LulenPanel") -> None:
+    def __init__(self, panel: LulenPanel) -> None:
         super().__init__(panel)
         self._panel = panel
         self._drop_row = -1
@@ -90,22 +110,22 @@ class GridView(QListView):
         self._drop_row, self._drop_after = self._drop_target(pos)
         self.viewport().update()
 
-    def startDrag(self, actions) -> None:  # noqa: N802
+    def startDrag(self, actions) -> None:
         if os.environ.get("LULEN_DEBUG"):
             print(f"[lulen] view startDrag actions={actions}", flush=True)
         super().startDrag(actions)
 
-    def mousePressEvent(self, e) -> None:  # noqa: N802
+    def mousePressEvent(self, e) -> None:
         if os.environ.get("LULEN_DEBUG"):
             print(f"[lulen] view press at {e.position()}", flush=True)
         super().mousePressEvent(e)
 
-    def mouseMoveEvent(self, e) -> None:  # noqa: N802
+    def mouseMoveEvent(self, e) -> None:
         if os.environ.get("LULEN_DEBUG"):
             print(f"[lulen] view move at {e.position()} buttons={e.buttons()}", flush=True)
         super().mouseMoveEvent(e)
 
-    def dragEnterEvent(self, e) -> None:  # noqa: N802
+    def dragEnterEvent(self, e) -> None:
         md = e.mimeData()
         if md.hasFormat(MIME_ITEM) and self._panel.model.filtered:
             e.ignore()
@@ -117,7 +137,7 @@ class GridView(QListView):
         else:
             super().dragEnterEvent(e)
 
-    def dragMoveEvent(self, e) -> None:  # noqa: N802
+    def dragMoveEvent(self, e) -> None:
         md = e.mimeData()
         if md.hasFormat(MIME_ITEM) or md.hasUrls() or (md.hasText() and md.text().strip()):
             e.acceptProposedAction()
@@ -126,13 +146,13 @@ class GridView(QListView):
         else:
             super().dragMoveEvent(e)
 
-    def dragLeaveEvent(self, e) -> None:  # noqa: N802
+    def dragLeaveEvent(self, e) -> None:
         self._drop_row = -1
         self._panel._end_drag_hover()
         self.viewport().update()
         super().dragLeaveEvent(e)
 
-    def dropEvent(self, e) -> None:  # noqa: N802
+    def dropEvent(self, e) -> None:
         self._panel._end_drag_hover()
         target = (self._drop_row, self._drop_after) if self._drop_row >= 0 else None
         if self._panel.handle_drop(e, target):
@@ -472,7 +492,7 @@ class LulenPanel(QWidget):
             s.columns, s.rows = cols, rows
             self._touch()
 
-    def event(self, e: QEvent) -> bool:  # noqa: N802
+    def event(self, e: QEvent) -> bool:
         if self.store.settings.hide_on_blur:
             if e.type() == QEvent.Type.WindowDeactivate:
                 self._blur_timer.start()
@@ -509,23 +529,23 @@ class LulenPanel(QWidget):
 
     # ---- 面板级拖放(覆盖页签条/把手/边距;网格区域由 GridView 处理)----
 
-    def dragEnterEvent(self, e) -> None:  # noqa: N802
+    def dragEnterEvent(self, e) -> None:
         if self._external_drag_ok(e):
             self._begin_drag_hover()
             e.acceptProposedAction()
         else:
             e.ignore()
 
-    def dragMoveEvent(self, e) -> None:  # noqa: N802
+    def dragMoveEvent(self, e) -> None:
         if self._external_drag_ok(e):
             e.acceptProposedAction()
         else:
             e.ignore()
 
-    def dragLeaveEvent(self, e) -> None:  # noqa: N802
+    def dragLeaveEvent(self, e) -> None:
         self._end_drag_hover()
 
-    def dropEvent(self, e) -> None:  # noqa: N802
+    def dropEvent(self, e) -> None:
         self._end_drag_hover()
         target = None
         if e.mimeData().hasFormat(MIME_ITEM):
@@ -548,7 +568,7 @@ class LulenPanel(QWidget):
         return bool(md.hasFormat(MIME_ITEM) or md.hasUrls()
                     or (md.hasText() and md.text().strip()))
 
-    def keyPressEvent(self, e) -> None:  # noqa: N802
+    def keyPressEvent(self, e) -> None:
         if e.key() == Qt.Key.Key_Escape:
             self.hide_animated()
             return
@@ -556,7 +576,7 @@ class LulenPanel(QWidget):
 
     # ================= 拖拽移动 / 键盘 / 命令条 =================
 
-    def eventFilter(self, obj, ev) -> bool:  # noqa: N802
+    def eventFilter(self, obj, ev) -> bool:
         try:
             return self._event_filter_impl(obj, ev)
         except (RuntimeError, AttributeError):
@@ -983,7 +1003,7 @@ class LulenPanel(QWidget):
         self._touch()
 
     def _on_favicon_ready(self, item_id: str) -> None:
-        g, item = self.store.find_item(item_id)
+        _, item = self.store.find_item(item_id)
         if item is not None:
             self.icons.invalidate(item)
             self.model.refresh_item(item_id)

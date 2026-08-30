@@ -9,15 +9,14 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 os.environ["LULEN_HOME"] = str(Path(__file__).parent / "shots" / "testhome")
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication
 
 from lulen.config import ConfigStore
 from lulen.hotkey import HotkeyManager
@@ -213,7 +212,6 @@ def main() -> int:
               and store.group().items[-1].name == "winver")
 
     # ---------- 9. 空态提示 ----------
-    empty_group_items = []
     store.groups.append(type(store.groups[0])(id="ui-empty", name="空组", items=[]))
     panel._refresh_groups(len(store.groups) - 1)
     wait(250)
@@ -223,7 +221,6 @@ def main() -> int:
     panel._refresh_groups(0)
 
     # ---------- 10. 失焦宽限期 + 拖拽感知(拖拽添加失效修复的回归)----------
-    from PySide6.QtCore import QPoint
     from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent
 
     # 真机上 WindowDeactivate 由前台切换触发;自动化无法可靠夺取前台,
@@ -274,6 +271,7 @@ def main() -> int:
 
     # ---------- 11. 边缘拖拽调大小:尺寸回写设置 + 手动尺寸不被收缩 ----------
     from PySide6.QtCore import QSize
+
     from lulen.config import Item as _Item
     panel.show_panel()
     wait(200)

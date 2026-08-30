@@ -11,14 +11,15 @@ import re
 import uuid
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import ClassVar
 
 from . import APP_NAME
 
 CONFIG_VERSION = 1
-URL_RE = re.compile(r"^(https?://|www\.)\S+$", re.I)
+URL_RE = re.compile(r"^(https?://|www\.)\S+$", re.IGNORECASE)
 _URL_RE = URL_RE
 # 裸域名(无盘符/路径分隔符、本地不存在)按网址处理,如 "github.com"
-_DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(/\S*)?$", re.I)
+_DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(/\S*)?$", re.IGNORECASE)
 
 
 def new_id() -> str:
@@ -47,7 +48,7 @@ class Item:
     hotkey: str = ""  # 条目快捷键,如 "Alt+1"
 
     @staticmethod
-    def create(type_: str, name: str, path: str, **kw) -> "Item":
+    def create(type_: str, name: str, path: str, **kw) -> Item:
         return Item(id=new_id(), type=type_, name=name, path=path, **kw)
 
     def to_dict(self) -> dict:
@@ -58,7 +59,7 @@ class Item:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Item":
+    def from_dict(cls, d: dict) -> Item:
         return cls(
             id=str(d.get("id") or new_id()),
             type=str(d.get("type") or "app"),
@@ -83,7 +84,7 @@ class Group:
         return {"id": self.id, "name": self.name, "items": [i.to_dict() for i in self.items]}
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Group":
+    def from_dict(cls, d: dict) -> Group:
         return cls(
             id=str(d.get("id") or new_id()),
             name=str(d.get("name") or "分组"),
@@ -109,8 +110,8 @@ class Settings:
     locked: bool = False  # 锁定面板位置(禁止拖动)
     pos: list[int] | None = None  # 记忆的窗口位置 [x, y]
 
-    _INT = {"columns", "rows", "icon_size", "opacity"}
-    _BOOL = {"single_click", "hide_on_blur", "hide_after_launch", "autostart", "locked"}
+    _INT: ClassVar[set[str]] = {"columns", "rows", "icon_size", "opacity"}
+    _BOOL: ClassVar[set[str]] = {"single_click", "hide_on_blur", "hide_after_launch", "autostart", "locked"}
 
     def to_dict(self) -> dict:
         return {
@@ -122,7 +123,7 @@ class Settings:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Settings":
+    def from_dict(cls, d: dict) -> Settings:
         s = cls()
         if not isinstance(d, dict):
             return s
@@ -309,7 +310,7 @@ def guess_type(path: str) -> str:
 def guess_name(path: str) -> str:
     p = (path or "").strip().rstrip("/\\")
     if _URL_RE.match(p):
-        host = re.sub(r"^(https?://|www\.)", "", p, flags=re.I)
+        host = re.sub(r"^(https?://|www\.)", "", p, flags=re.IGNORECASE)
         return host.split("/")[0] or host
     if p.lower().endswith(".url") and os.path.isfile(p):
         url = parse_url_file(p)

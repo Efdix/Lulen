@@ -5,10 +5,9 @@
 """
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from PySide6.QtCore import QAbstractListModel, QMimeData, QModelIndex, Qt
-from PySide6.QtGui import QIcon
 
 from .config import Item, tip_text
 
@@ -86,7 +85,7 @@ class ItemsModel(QAbstractListModel):
 
     # ---------- 只读访问 ----------
 
-    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
+    def rowCount(self, parent=QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._rows)
 
     def item_at(self, row: int) -> Item | None:
@@ -98,7 +97,7 @@ class ItemsModel(QAbstractListModel):
     def first_visible(self) -> Item | None:
         return self._rows[0] if self._rows else None
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):  # noqa: N802
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         item = self.item_at(index.row())
         if item is None:
             return None
@@ -112,10 +111,10 @@ class ItemsModel(QAbstractListModel):
             return tip_text(item)
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlag:  # noqa: N802
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsDragEnabled
 
-    def roleNames(self):  # noqa: N802
+    def roleNames(self):
         return {
             int(Qt.ItemDataRole.DisplayRole): b"display",
             int(self.IconRole): b"icon",
@@ -126,10 +125,10 @@ class ItemsModel(QAbstractListModel):
 
     # ---------- 拖拽载荷 ----------
 
-    def mimeTypes(self):  # noqa: N802
+    def mimeTypes(self):
         return [MIME_ITEM, "text/uri-list"]
 
-    def mimeData(self, indexes):  # noqa: N802
+    def mimeData(self, indexes):
         md = QMimeData()
         ids = ",".join(self._rows[i.row()].id for i in indexes if i.isValid())
         md.setData(MIME_ITEM, ids.encode("utf-8"))

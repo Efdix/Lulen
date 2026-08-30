@@ -113,7 +113,7 @@ class _NativeFilter(QAbstractNativeEventFilter):
         super().__init__()
         self._callback = callback
 
-    def nativeEventFilter(self, event_type, message):  # noqa: N802 (Qt 命名)
+    def nativeEventFilter(self, event_type, message):
         if event_type == b"windows_generic_MSG":
             msg = wintypes.MSG.from_address(int(message))
             if msg.message == WM_HOTKEY:

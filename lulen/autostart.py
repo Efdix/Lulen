@@ -14,6 +14,8 @@ VALUE_NAME = "Lulen"
 
 
 def _command() -> str:
+    if getattr(sys, "frozen", False):  # PyInstaller 单文件:自启动直接指向 exe
+        return f'"{Path(sys.executable).resolve()}" --hidden'
     exe = Path(sys.executable)
     pythonw = exe.with_name("pythonw.exe")
     if not pythonw.exists():

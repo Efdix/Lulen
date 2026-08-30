@@ -6,7 +6,7 @@ import os
 import urllib.request
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QPointF, QRectF, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen, QPixmap
 
 try:  # Qt >= 6.7 时 QFileIconProvider 位于 QtGui
@@ -31,7 +31,7 @@ def _domain(url: str) -> str:
 class _FaviconFetcher(QRunnable):
     """工作线程里用 urllib 抓取站点图标(QNetworkAccessManager 需事件循环,线程内不便)。"""
 
-    def __init__(self, service: "IconService", item_id: str, domain: str, out_file: Path) -> None:
+    def __init__(self, service: IconService, item_id: str, domain: str, out_file: Path) -> None:
         super().__init__()
         self._service = service
         self._item_id = item_id

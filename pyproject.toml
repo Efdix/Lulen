@@ -1,0 +1,30 @@
+[project]
+name = "lulen"
+version = "0.5.0"
+description = "Lulen — Windows 快速启动面板"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6-Essentials>=6.6",
+    "pypinyin>=0.50",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+    "pyinstaller>=6.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# BLE001:桌面应用对 COM/OS 调用做防御性兜底属于刻意设计
+# S110/S112:静默吞掉的备份/网络失败同样刻意
+# RUF012:类属性常量容器(_INT/_BOOL)
+# B008:Qt 惯用法 QModelIndex() 作默认参
+# PLW1510:测试/启动探测场景不需要 check
+ignore = ["BLE001", "S110", "S112", "RUF012", "B008", "PLW1510"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lulen"]

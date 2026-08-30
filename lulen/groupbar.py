@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor, QColor
+from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
 
 from .config import ConfigStore
@@ -42,7 +42,7 @@ class GroupTabs(QTabBar):
 
     # ---------- 拖拽换组 ----------
 
-    def dragEnterEvent(self, e) -> None:  # noqa: N802
+    def dragEnterEvent(self, e) -> None:
         if os.environ.get("LULEN_DEBUG"):
             print(f"[lulen] tabs dragEnter has_item={e.mimeData().hasFormat(MIME_ITEM)}", flush=True)
         if e.mimeData().hasFormat(MIME_ITEM) and not self._panel_locked():
@@ -52,20 +52,20 @@ class GroupTabs(QTabBar):
         else:
             e.ignore()
 
-    def dragMoveEvent(self, e) -> None:  # noqa: N802
+    def dragMoveEvent(self, e) -> None:
         if e.mimeData().hasFormat(MIME_ITEM):
             e.acceptProposedAction()
             self._update_drop_hover(e.position().toPoint())
         else:
             e.ignore()
 
-    def dragLeaveEvent(self, e) -> None:  # noqa: N802
+    def dragLeaveEvent(self, e) -> None:
         self._switch_timer.stop()
         self._drop_index = -1
         self._mark_drag(False)
         self._set_drop_tab(-1)
 
-    def dropEvent(self, e) -> None:  # noqa: N802
+    def dropEvent(self, e) -> None:
         index = self._tab_at_or_nearest(e.position().toPoint())
         if os.environ.get("LULEN_DEBUG"):
             print(f"[lulen] tabs drop index={index} raw={self.tabAt(e.position().toPoint())}", flush=True)
@@ -129,7 +129,7 @@ class GroupTabs(QTabBar):
 
     # ---------- 右键管理 ----------
 
-    def contextMenuEvent(self, e) -> None:  # noqa: N802
+    def contextMenuEvent(self, e) -> None:
         index = self.tabAt(e.pos())
         if not (0 <= index < len(self._store.groups)):
             return

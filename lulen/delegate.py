@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QFontMetrics, QColor, QIcon, QPainter, QPen
+from PySide6.QtGui import QFontMetrics, QIcon, QPainter, QPen
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate
 
 from .model import ItemsModel
@@ -23,7 +23,7 @@ class ItemDelegate(QStyledItemDelegate):
     def set_metrics(self, cell_w: int, cell_h: int, icon_size: int) -> None:
         self._cell_w, self._cell_h, self._icon_size = cell_w, cell_h, icon_size
 
-    def sizeHint(self, option, index) -> QSize:  # noqa: N802
+    def sizeHint(self, option, index) -> QSize:
         return QSize(self._cell_w, self._cell_h)
 
     def paint(self, painter: QPainter, option, index) -> None:
@@ -70,7 +70,7 @@ class ItemDelegate(QStyledItemDelegate):
         label_h = fm.height() + 2
         label_rect = QRect(rect.left() + 2, rect.bottom() - label_h - 1,
                            rect.width() - 4, label_h)
-        painter.setPen(QPen(pal.text if selected else pal.text, 1))
+        painter.setPen(QPen(pal.text, 1))
         painter.setFont(option.font)
         elided = fm.elidedText(name, Qt.TextElideMode.ElideRight, label_rect.width())
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, elided)

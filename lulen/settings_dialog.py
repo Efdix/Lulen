@@ -6,9 +6,21 @@ import os
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence
 from PySide6.QtWidgets import (
-    QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
-    QSlider, QSpinBox, QVBoxLayout, QWidget,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
 )
 
 from . import autostart
@@ -36,12 +48,12 @@ class HotkeyEdit(QLineEdit):
         self._original = text
         self._capturing = False
 
-    def mousePressEvent(self, e) -> None:  # noqa: N802
+    def mousePressEvent(self, e) -> None:
         self._capturing = True
         self.setText("")
         self.setPlaceholderText("请按下组合键…")
 
-    def keyPressEvent(self, e) -> None:  # noqa: N802
+    def keyPressEvent(self, e) -> None:
         key = e.key()
         mods = e.modifiers()
         if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta,
@@ -257,6 +269,6 @@ class SettingsWindow(QDialog):
     def _open_config_dir(self) -> None:
         os.startfile(str(self._store.dir))
 
-    def closeEvent(self, e) -> None:  # noqa: N802
+    def closeEvent(self, e) -> None:
         self.settings_changed.emit()
         super().closeEvent(e)
