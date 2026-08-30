@@ -176,6 +176,7 @@ def main() -> int:
 
     panel = LulenPanel(store, icons, hotkeys)
     panel.settings_changed.connect(lambda: _apply_style(app, store))
+    single.another_show.connect(panel.show_panel)
 
     tray = Tray(icons_mod.app_icon(store.settings.accent), store)
     tray.toggle_requested.connect(panel.toggle)

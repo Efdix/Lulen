@@ -205,6 +205,7 @@ class LulenPanel(QWidget):
     def _build_anim(self) -> None:
         self._anim = QPropertyAnimation(self, b"windowOpacity", self)
         self._anim.setDuration(130)
+        self._anim.finished.connect(self._finish_hide)
 
     # ================= 设置应用 =================
 
@@ -239,6 +240,9 @@ class LulenPanel(QWidget):
     # ================= 显示 / 隐藏 =================
 
     def toggle(self) -> None:
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] toggle visible={self.isVisible()} hiding={self._hiding} "
+                  f"active={self.isActiveWindow()}", flush=True)
         if self._hiding:  # 正在淡出 → 直接拉回
             self._anim.stop()
             self._hiding = False
@@ -247,11 +251,7 @@ class LulenPanel(QWidget):
             self.activateWindow()
             return
         if self.isVisible():
-            if self.isActiveWindow():
-                self.hide_animated()
-            else:
-                self.raise_()
-                self.activateWindow()
+            self.hide_animated()
             return
         self.show_panel()
 
@@ -266,18 +266,13 @@ class LulenPanel(QWidget):
         self.view.setFocus()
 
     def hide_animated(self) -> None:
-        if not self.isVisible():
+        if not self.isVisible() or self._hiding:
             return
         self._hiding = True
         self._anim.stop()
         self._anim.setStartValue(self.windowOpacity())
         self._anim.setKeyValueAt(0.5, self._opacity_base * 0.5)
         self._anim.setEndValue(0.0)
-        try:
-            self._anim.finished.disconnect()
-        except RuntimeError:
-            pass
-        self._anim.finished.connect(self._finish_hide)
         self._anim.start()
 
     def _finish_hide(self) -> None:
@@ -510,53 +505,46 @@ class LulenPanel(QWidget):
     # ================= 右键菜单 =================
 
     def _show_menu(self, pos) -> None:
-        index = self.view.indexAt(pos)
+        """构建并弹出右键菜单(构建逻辑在 _build_menu,便于测试)。"""
+        menu = self._build_menu(self.view.indexAt(pos))
+        if menu is None:
+            return
+        menu.exec(QCursor.pos())
+
+    def _build_menu(self, index) -> QMenu | None:
         menu = QMenu(self)
         if index.isValid():
             selection = self.view.selectionModel().selectedIndexes()
             if len(selection) > 1:
-                self._multi_menu(menu, selection)
+                self._fill_multi_menu(menu, selection)
             else:
-                self._item_menu(menu, self.model.item_at(index.row()))
+                self._fill_item_menu(menu, self.model.item_at(index.row()))
         else:
-            self._empty_menu(menu)
-        menu.exec(QCursor.pos())
+            self._fill_empty_menu(menu)
+        return menu
 
-    def _item_menu(self, menu: QMenu, item: Item) -> None:
-        act_run = menu.addAction("运行")
+    def _fill_item_menu(self, menu: QMenu, item: Item) -> None:
+        menu.addAction("运行", lambda: self._launch(self.model.index(self.model.row_of(item))))
         if item.type == "app":
             menu.addAction("以管理员身份运行", lambda: self._launch_item_direct(item, admin=True))
-        act_loc = menu.addAction("在资源管理器中显示")
-        act_copy = menu.addAction("复制目标路径")
+        menu.addAction("在资源管理器中显示",
+                       lambda: self._notify_or_err(open_containing(item)))
+        menu.addAction("复制目标路径",
+                       lambda: QApplication.clipboard().setText(item.path))
         menu.addSeparator()
-        act_edit = menu.addAction("编辑…")
-        act_hotkey = menu.addAction("条目快捷键…")
+        menu.addAction("编辑…", lambda: self._edit_item(item))
+        menu.addAction("条目快捷键…", lambda: self._edit_item_hotkey(item))
         move_menu = menu.addMenu("移动到分组")
         for g in self.store.groups:
             if g is not self.store.group():
-                move_menu.addAction(g.name, lambda gid=g.id, iid=item.id: self._move_items_to_group(gid, [iid]))
+                move_menu.addAction(g.name,
+                                    lambda gid=g.id, iid=item.id: self._move_items_to_group(gid, [iid]))
         menu.addSeparator()
-        act_del = menu.addAction("删除")
+        menu.addAction("删除", lambda: self._delete_items([item.id]))
 
-        chosen = menu.exec(QCursor.pos())
-        if chosen is act_run:
-            self._launch(self.model.index(self.model.row_of(item)))
-        elif chosen is act_loc:
-            ok, err = open_containing(item)
-            if not ok:
-                self.notify_requested.emit("Lulen", err)
-        elif chosen is act_copy:
-            QApplication.clipboard().setText(item.path)
-        elif chosen is act_edit:
-            self._edit_item(item)
-        elif chosen is act_hotkey:
-            self._edit_item_hotkey(item)
-        elif chosen is act_del:
-            self._delete_items([item.id])
-
-    def _multi_menu(self, menu: QMenu, selection) -> None:
-        ids = [self.model.item_at(i.row()).id for i in selection if self.model.item_at(i.row())]
+    def _fill_multi_menu(self, menu: QMenu, selection) -> None:
         items = [self.model.item_at(i.row()) for i in selection if self.model.item_at(i.row())]
+        ids = [i.id for i in items]
         menu.addAction(f"运行所选({len(items)})", lambda: self._launch_many(items))
         move_menu = menu.addMenu("移动到分组")
         for g in self.store.groups:
@@ -565,8 +553,7 @@ class LulenPanel(QWidget):
         menu.addSeparator()
         menu.addAction(f"删除所选({len(items)})", lambda: self._delete_items(ids))
 
-    def _empty_menu(self, menu: QMenu) -> None:
-        g = self.store.group()
+    def _fill_empty_menu(self, menu: QMenu) -> None:
         menu.addAction("新建条目…", lambda: self._edit_item(None))
         menu.addAction("新建网址…", lambda: self._edit_item(None, force_type="url"))
         menu.addAction("新建命令…", lambda: self._edit_item(None, force_type="command"))
@@ -576,30 +563,35 @@ class LulenPanel(QWidget):
         gmenu.addAction("重命名当前分组…", lambda: self.rename_group(self.store.current_group))
         gmenu.addAction("删除当前分组", lambda: self.delete_group(self.store.current_group))
         menu.addSeparator()
-        act_theme = menu.addAction("浅色主题" if self.store.settings.theme == "dark" else "深色主题")
+        menu.addAction("浅色主题" if self.store.settings.theme == "dark" else "深色主题",
+                       self._toggle_theme)
         act_lock = menu.addAction("锁定面板位置")
         act_lock.setCheckable(True)
         act_lock.setChecked(self.store.settings.locked)
+        act_lock.triggered.connect(self._toggle_lock)
         act_auto = menu.addAction("开机自启")
         act_auto.setCheckable(True)
         act_auto.setChecked(autostart.is_enabled())
+        act_auto.triggered.connect(self._toggle_autostart)
         menu.addSeparator()
         menu.addAction("设置…", self.open_settings)
         menu.addAction("退出", lambda: QApplication.instance().quit())
 
-        chosen = menu.exec(QCursor.pos())
-        if chosen is act_theme:
-            self.store.settings.theme = "light" if self.store.settings.theme == "dark" else "dark"
-            self._on_settings_changed()
-        elif chosen is act_lock:
-            self._toggle_lock()
-        elif chosen is act_auto:
-            on = not autostart.is_enabled()
-            if autostart.set_enabled(on):
-                self.store.settings.autostart = on
-                self._touch()
-            else:
-                self.notify_requested.emit("Lulen", "开机自启设置失败")
+    def _notify_or_err(self, result: tuple[bool, str]) -> None:
+        ok, err = result
+        if not ok:
+            self.notify_requested.emit("Lulen", err)
+
+    def _toggle_theme(self) -> None:
+        self.store.settings.theme = "light" if self.store.settings.theme == "dark" else "dark"
+        self._on_settings_changed()
+
+    def _toggle_autostart(self, on: bool) -> None:
+        if autostart.set_enabled(on):
+            self.store.settings.autostart = on
+            self._touch()
+        else:
+            self.notify_requested.emit("Lulen", "开机自启设置失败")
 
     # ================= 条目操作 =================
 
