@@ -207,6 +207,57 @@ def main() -> int:
     store.groups.pop()
     panel._refresh_groups(0)
 
+    # ---------- 10. 失焦宽限期 + 拖拽感知(拖拽添加失效修复的回归)----------
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent
+
+    # 真机上 WindowDeactivate 由前台切换触发;自动化无法可靠夺取前台,
+    # 故直接启动同一代码路径使用的宽限定时器,并把激活状态断言遮蔽为"失焦"。
+    panel.isActiveWindow = lambda: False  # type: ignore[method-assign]
+    app_activeWindow_orig = QApplication.activeWindow
+    QApplication.activeWindow = staticmethod(lambda: None)  # 模拟前台是 Explorer(非 Qt 程序)
+    panel.store.settings.hide_on_blur = True  # 打开失焦隐藏以验证宽限逻辑
+    try:
+        panel.show_panel()
+        wait(250)
+        panel._blur_timer.start()  # 等价于收到 WindowDeactivate
+        wait(200)
+        check("grace keeps panel visible", panel.isVisible())
+        wait(1500)  # 超过 1200ms 宽限期
+        check("panel hides after grace", not panel.isVisible())
+
+        # 拖拽悬停面板:dragEnter 置 _drag_over,失焦判定必须放行
+        panel.show_panel()
+        wait(250)
+        md = QMimeData()
+        md.setUrls([QUrl.fromLocalFile(r"C:\Windows\System32\winver.exe")])
+        enter_ev = QDragEnterEvent(QPoint(200, 100), Qt.DropAction.CopyAction, md,
+                                   Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        panel.dragEnterEvent(enter_ev)
+        check("panel dragEnter accepted", enter_ev.isAccepted())
+        check("drag hover flagged", panel._drag_over)
+        panel._blur_timer.start()
+        wait(1800)  # 远超宽限期,拖拽仍在面板上
+        check("drag hover keeps panel visible", panel.isVisible())
+
+        # 拖离面板:复位后按正常逻辑隐藏
+        panel.dragLeaveEvent(QDragLeaveEvent())
+        wait(1100)
+        check("panel hides after drag leaves", not panel.isVisible())
+
+        # 面板级拖放入口(页签条/边距区域):合成 drop 到 panel 本体
+        panel.show_panel()
+        wait(250)
+        n_before = panel.model.rowCount()
+        drop_ev = QDropEvent(QPoint(200, 100), Qt.DropAction.CopyAction, md,
+                             Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        panel.dropEvent(drop_ev)
+        wait(200)
+        check("panel-level drop adds item", panel.model.rowCount() == n_before + 1)
+    finally:
+        QApplication.activeWindow = app_activeWindow_orig
+    panel.show_panel()
+
     panel.hide_now()
     hotkeys.unregister_all()
     print(f"UI-SMOKE {'PASS' if not FAILS else 'FAIL'} ({len(FAILS)} failed)", flush=True)

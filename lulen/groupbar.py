@@ -42,6 +42,7 @@ class GroupTabs(QTabBar):
     def dragEnterEvent(self, e) -> None:  # noqa: N802
         if e.mimeData().hasFormat(MIME_ITEM) and not self._panel_locked():
             e.acceptProposedAction()
+            self._mark_drag(True)
             self._update_drop_hover(e.position().toPoint())
         else:
             e.ignore()
@@ -56,17 +57,28 @@ class GroupTabs(QTabBar):
     def dragLeaveEvent(self, e) -> None:  # noqa: N802
         self._switch_timer.stop()
         self._drop_index = -1
+        self._mark_drag(False)
 
     def dropEvent(self, e) -> None:  # noqa: N802
         self._switch_timer.stop()
         index = self.tabAt(e.position().toPoint())
         self._drop_index = -1
+        self._mark_drag(False)
         if index < 0:
             return
         ids = [x for x in bytes(e.mimeData().data(MIME_ITEM)).decode("utf-8").split(",") if x]
         if ids and index < len(self._store.groups):
             self.items_dropped.emit(self._store.groups[index].id, ids)
             e.acceptProposedAction()
+
+    def _mark_drag(self, over: bool) -> None:
+        panel = self.parent()
+        if panel is None:
+            return
+        if over:
+            panel._begin_drag_hover()
+        else:
+            panel._end_drag_hover()
 
     def _panel_locked(self) -> bool:
         return self._store.settings.locked

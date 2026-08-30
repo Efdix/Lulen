@@ -1,6 +1,7 @@
 """悬浮启动面板:无边框置顶工具窗,集成条目网格、分组页签、命令条与托盘联动。"""
 from __future__ import annotations
 
+import ctypes
 import math
 import os
 import subprocess
@@ -27,6 +28,9 @@ from .model import MIME_ITEM, ItemsModel
 from .settings_dialog import SettingsWindow
 from .theme import Palette, build_palette
 
+_BLUR_GRACE_MS = 1200  # 失焦后隐藏的宽限期:给"点选文件→拖拽"留时间
+_DRAG_RESCHEDULE_MS = 250  # 拖拽进行中时重查间隔
+
 _RUN_DIALOG_CLSID = "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"
 _SEARCH_ENGINES = (
     ("s ", "https://www.baidu.com/s?wd={}"),
@@ -50,6 +54,7 @@ class GridView(QListView):
             e.ignore()
             return
         if md.hasFormat(MIME_ITEM) or md.hasUrls() or (md.hasText() and md.text().strip()):
+            self._panel._begin_drag_hover()
             e.acceptProposedAction()
         else:
             super().dragEnterEvent(e)
@@ -61,7 +66,12 @@ class GridView(QListView):
         else:
             super().dragMoveEvent(e)
 
+    def dragLeaveEvent(self, e) -> None:  # noqa: N802
+        self._panel._end_drag_hover()
+        super().dragLeaveEvent(e)
+
     def dropEvent(self, e) -> None:  # noqa: N802
+        self._panel._end_drag_hover()
         if self._panel.handle_drop(e):
             e.acceptProposedAction()
         else:
@@ -86,11 +96,13 @@ class LulenPanel(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAcceptDrops(True)  # 面板整体(含页签条/边距)都能接住外部拖放
         self.setWindowTitle("Lulen")
 
         self._shadow_margin = 16
         self._drag_offset: QPoint | None = None
         self._drag_source: QWidget | None = None
+        self._drag_over = False  # 有 OLE 拖拽悬停在面板上
         self._hiding = False
         self._opacity_base = store.settings.opacity / 100
         self._last_launch: tuple[str, float] = ("", 0.0)
@@ -122,6 +134,11 @@ class LulenPanel(QWidget):
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(250)
         self._save_timer.timeout.connect(self.store.save)
+
+        self._blur_timer = QTimer(self)
+        self._blur_timer.setSingleShot(True)
+        self._blur_timer.setInterval(_BLUR_GRACE_MS)
+        self._blur_timer.timeout.connect(self._blur_maybe_hide)
 
     # ================= 界面构建 =================
 
@@ -324,11 +341,15 @@ class LulenPanel(QWidget):
         self._touch()
 
     def event(self, e: QEvent) -> bool:  # noqa: N802
-        if e.type() == QEvent.Type.WindowDeactivate and self.store.settings.hide_on_blur:
-            QTimer.singleShot(160, self._blur_check)
+        if self.store.settings.hide_on_blur:
+            if e.type() == QEvent.Type.WindowDeactivate:
+                self._blur_timer.start()
+            elif e.type() == QEvent.Type.WindowActivate:
+                self._blur_timer.stop()
         return super().event(e)
 
-    def _blur_check(self) -> None:
+    def _blur_maybe_hide(self) -> None:
+        """宽限期到点后的隐藏判定:拖拽进行中 / 悬停中则等待,其余隐藏。"""
         if not (self.isVisible() and self.store.settings.hide_on_blur) or self._hiding:
             return
         if self.isActiveWindow() or QApplication.activeWindow() is not None:
@@ -337,7 +358,54 @@ class LulenPanel(QWidget):
             return
         if QApplication.activeModalWidget() is not None:
             return  # 自己弹出的对话框(编辑/设置)打开期间保持面板
+        if self._drag_over:
+            return  # 文件正拖在面板上
+        if ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
+            # 左键按住:用户可能正从别的程序拖着文件过来
+            QTimer.singleShot(_DRAG_RESCHEDULE_MS, self._blur_maybe_hide)
+            return
         self.hide_animated()
+
+    def _begin_drag_hover(self) -> None:
+        self._drag_over = True
+        self._blur_timer.stop()
+
+    def _end_drag_hover(self) -> None:
+        self._drag_over = False
+        if self.store.settings.hide_on_blur:
+            QTimer.singleShot(500, self._blur_maybe_hide)
+
+    # ---- 面板级拖放(覆盖页签条/把手/边距;网格区域由 GridView 处理)----
+
+    def dragEnterEvent(self, e) -> None:  # noqa: N802
+        if self._external_drag_ok(e):
+            self._begin_drag_hover()
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e) -> None:  # noqa: N802
+        if self._external_drag_ok(e):
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragLeaveEvent(self, e) -> None:  # noqa: N802
+        self._end_drag_hover()
+
+    def dropEvent(self, e) -> None:  # noqa: N802
+        self._end_drag_hover()
+        if self.handle_drop(e):
+            e.acceptProposedAction()
+
+    def _external_drag_ok(self, e) -> bool:
+        if os.environ.get("LULEN_DEBUG"):
+            md = e.mimeData()
+            print(f"[lulen] dragEnter urls={md.hasUrls()} item={md.hasFormat(MIME_ITEM)} "
+                  f"text={md.hasText() and md.text().strip()[:40]!r}", flush=True)
+        md = e.mimeData()
+        return bool(md.hasFormat(MIME_ITEM) or md.hasUrls()
+                    or (md.hasText() and md.text().strip()))
 
     def keyPressEvent(self, e) -> None:  # noqa: N802
         if e.key() == Qt.Key.Key_Escape:
