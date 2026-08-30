@@ -188,6 +188,7 @@ def main() -> int:
     tray.show_settings.connect(panel.open_settings)
     tray.quit_requested.connect(app.quit)
     panel.notify_requested.connect(tray.notify)
+    panel.settings_changed.connect(tray._update_tooltip)
 
     hotkeys.main_activated.connect(panel.toggle)
     hotkeys.item_activated.connect(panel.launch_by_hotkey)

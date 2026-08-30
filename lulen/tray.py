@@ -17,7 +17,7 @@ class Tray(QSystemTrayIcon):
     def __init__(self, icon: QIcon, store: ConfigStore, parent=None) -> None:
         super().__init__(icon, parent)
         self._store = store
-        self.setToolTip("Lulen — 快速启动面板")
+        self._update_tooltip()
 
         menu = QMenu()
         act_toggle = menu.addAction("显示 / 隐藏面板")
@@ -48,6 +48,9 @@ class Tray(QSystemTrayIcon):
             self._act_autostart.blockSignals(True)
             self._act_autostart.setChecked(autostart.is_enabled())
             self._act_autostart.blockSignals(False)
+
+    def _update_tooltip(self) -> None:
+        self.setToolTip(f"Lulen — 按 {self._store.settings.hotkey} 呼出面板")
 
     def notify(self, title: str, body: str) -> None:
         self.showMessage(title, body, QSystemTrayIcon.MessageIcon.Information, 3500)

@@ -47,10 +47,33 @@ def wait(ms: int) -> None:
     QTest.qWait(ms)
 
 
+def seed_testhome() -> None:
+    """重置测试配置,保证测试不依赖外部状态。"""
+    from lulen.config import Group, Item, new_id
+    store = ConfigStore()
+    store.load()
+    store.groups = [
+        Group(id=new_id(), name="常用", items=[
+            Item.create("app", "记事本", r"C:\Windows\System32\notepad.exe"),
+            Item.create("app", "命令提示符", r"C:\Windows\System32\cmd.exe"),
+            Item.create("app", "资源管理器", r"C:\Windows\explorer.exe"),
+            Item.create("url", "baidu.com", "https://www.baidu.com"),
+            Item.create("folder", "下载", r"C:\Users\13984\Downloads"),
+        ]),
+        Group(id=new_id(), name="工具", items=[
+            Item.create("app", "计算器", r"C:\Windows\System32\calc.exe"),
+        ]),
+    ]
+    store.current_group = 0
+    store.settings.hide_on_blur = False
+    store.save()
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(build_qss("dark", "#4F8CFF"))
 
+    seed_testhome()
     store = ConfigStore()
     store.load()
     store.current_group = 0

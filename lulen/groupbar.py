@@ -1,7 +1,7 @@
 """分组页签条:基于 QTabBar(原生拖拽重排),支持跨组拖入条目与右键管理。"""
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, QMimeData, QTimer, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
 
@@ -168,13 +168,6 @@ class GroupBar(QWidget):
             if g.id == group_id:
                 self._tabs.setCurrentIndex(i)
                 return
-
-    def refresh_texts(self) -> None:
-        bar = self._tabs
-        for i, g in enumerate(self._store.groups):
-            if i < bar.count():
-                bar.setTabText(i, g.name)
-                bar.setTabToolTip(i, g.name)
 
     # ---------- 事件 ----------
 
