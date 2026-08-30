@@ -75,4 +75,15 @@ class ItemDelegate(QStyledItemDelegate):
         elided = fm.elidedText(name, Qt.TextElideMode.ElideRight, label_rect.width())
         painter.drawText(label_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, elided)
 
+        # 拖动排序指示线:目标格左/右边缘的强调色竖条
+        view = self.parent()
+        if hasattr(view, "indicator"):
+            ind = view.indicator()
+            if ind is not None and ind[0] == index.row():
+                _, after = ind
+                x = rect.right() - 1 if after else rect.left() + 1
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(pal.accent)
+                painter.drawRoundedRect(QRect(x - 2, rect.top() + 2, 4, rect.height() - 4), 2, 2)
+
         painter.restore()

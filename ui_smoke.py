@@ -174,28 +174,36 @@ def main() -> int:
     from PySide6.QtCore import QMimeData, QUrl
     from PySide6.QtGui import QDropEvent
 
-    if panel.model.rowCount() >= 2:
-        before = [i.name for i in store.group().items]
+    if panel.model.rowCount() >= 3:
+        names0 = [i.name for i in store.group().items]
         md = QMimeData()
-        md.setData(MIME_ITEM_IDS, ",".join([store.group().items[-1].id]).encode("utf-8"))
-        dst = panel.view.visualRect(panel.model.index(0)).center()
-        ev = QDropEvent(dst, Qt.DropAction.MoveAction, md,
+        md.setData(MIME_ITEM_IDS, store.group().items[0].id.encode("utf-8"))
+        # 前插:把第 1 项插到第 3 项前面
+        ev = QDropEvent(panel.view.visualRect(panel.model.index(2)).center(),
+                        Qt.DropAction.MoveAction, md,
                         Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
-        panel.handle_drop(ev)
-        wait(200)
+        panel.handle_drop(ev, target=(2, False))
+        wait(150)
+        mid = [i.name for i in store.group().items]
+        check("reorder insert-before exact",
+              mid == [names0[1], names0[0], names0[2], *names0[3:]])
+        # 后插:再把该项插到第 3 项后面
+        ev2 = QDropEvent(panel.view.visualRect(panel.model.index(2)).center(),
+                         Qt.DropAction.MoveAction, md,
+                         Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        panel.handle_drop(ev2, target=(2, True))
+        wait(150)
         after = [i.name for i in store.group().items]
-        print(f"  order: {before} -> {after}", flush=True)
-        check("drop reorder applied to store",
-              before != after and after.index(before[-1]) < len(before) - 1
-              and sorted(after) == sorted(before))
+        check("reorder insert-after exact",
+              after == [names0[1], names0[2], names0[0], *names0[3:]])
 
-        # 外部拖入:模拟资源管理器拖来一个文件
+        # 外部拖入:模拟资源管理器拖来一个文件(落在空白处 → 追加到末尾)
         n_before = panel.model.rowCount()
         md2 = QMimeData()
         md2.setUrls([QUrl.fromLocalFile(r"C:\Windows\System32\winver.exe")])
-        ev2 = QDropEvent(dst, Qt.DropAction.CopyAction, md2,
+        ev3 = QDropEvent(panel.view.viewport().rect().center(), Qt.DropAction.CopyAction, md2,
                          Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
-        panel.handle_drop(ev2)
+        panel.handle_drop(ev3, target=(panel.model.rowCount(), False))
         wait(200)
         check("external file dropped", panel.model.rowCount() == n_before + 1
               and store.group().items[-1].name == "winver")

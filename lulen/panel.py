@@ -60,11 +60,35 @@ _SEARCH_ENGINES = (
 
 
 class GridView(QListView):
-    """条目网格:接管外部拖放与内部排序。"""
+    """条目网格:接管外部拖放与内部排序。
+
+    拖动排序的落点 = 光标所在目标格的左/右半边决定插到它前面还是后面,
+    拖动过程由委托绘制指示线,落下判定与指示线共用同一套计算。
+    """
 
     def __init__(self, panel: "LulenPanel") -> None:
         super().__init__(panel)
         self._panel = panel
+        self._drop_row = -1
+        self._drop_after = False
+
+    def indicator(self) -> tuple[int, bool] | None:
+        """(行, 是否插到该行后面);无指示时 None。"""
+        if self._drop_row < 0:
+            return None
+        return self._drop_row, self._drop_after
+
+    def _drop_target(self, pos) -> tuple[int, bool]:
+        """把视口内坐标换算成 (行, 是否插到该行后面)。"""
+        idx = self.indexAt(pos)
+        if not idx.isValid():
+            return self.model.rowCount(), False
+        after = pos.x() > self.visualRect(idx).center().x()
+        return idx.row(), after
+
+    def _update_indicator(self, pos) -> None:
+        self._drop_row, self._drop_after = self._drop_target(pos)
+        self.viewport().update()
 
     def startDrag(self, actions) -> None:  # noqa: N802
         if os.environ.get("LULEN_DEBUG"):
@@ -88,6 +112,7 @@ class GridView(QListView):
             return
         if md.hasFormat(MIME_ITEM) or md.hasUrls() or (md.hasText() and md.text().strip()):
             self._panel._begin_drag_hover()
+            self._drop_row, self._drop_after = -1, False
             e.acceptProposedAction()
         else:
             super().dragEnterEvent(e)
@@ -96,19 +121,26 @@ class GridView(QListView):
         md = e.mimeData()
         if md.hasFormat(MIME_ITEM) or md.hasUrls() or (md.hasText() and md.text().strip()):
             e.acceptProposedAction()
+            if md.hasFormat(MIME_ITEM) and not self._panel.model.filtered:
+                self._update_indicator(e.position().toPoint())
         else:
             super().dragMoveEvent(e)
 
     def dragLeaveEvent(self, e) -> None:  # noqa: N802
+        self._drop_row = -1
         self._panel._end_drag_hover()
+        self.viewport().update()
         super().dragLeaveEvent(e)
 
     def dropEvent(self, e) -> None:  # noqa: N802
         self._panel._end_drag_hover()
-        if self._panel.handle_drop(e):
+        target = (self._drop_row, self._drop_after) if self._drop_row >= 0 else None
+        if self._panel.handle_drop(e, target):
             e.acceptProposedAction()
         else:
             super().dropEvent(e)
+        self._drop_row = -1
+        self.viewport().update()
 
 
 class LulenPanel(QWidget):
@@ -494,7 +526,11 @@ class LulenPanel(QWidget):
 
     def dropEvent(self, e) -> None:  # noqa: N802
         self._end_drag_hover()
-        if self.handle_drop(e):
+        target = None
+        if e.mimeData().hasFormat(MIME_ITEM):
+            vp = self.view.viewport().mapFrom(self, e.position().toPoint())
+            target = self.view._drop_target(vp)
+        if self.handle_drop(e, target):
             e.acceptProposedAction()
 
     def _external_drag_ok(self, e) -> bool:
@@ -697,16 +733,19 @@ class LulenPanel(QWidget):
 
     # ================= 拖放 =================
 
-    def handle_drop(self, e) -> bool:
+    def handle_drop(self, e, target: tuple[int, bool] | None = None) -> bool:
+        """处理拖放。target=(行, 是否插到该行后面) 为视图计算的精确落点;
+        None 时按事件坐标现算。返回是否处理。"""
         md = e.mimeData()
         if md.hasFormat(MIME_ITEM):
             ids = [x for x in bytes(md.data(MIME_ITEM)).decode("utf-8").split(",") if x]
-            idx = self.view.indexAt(e.position().toPoint())
-            dp = self.view.dropIndicatorPosition()
-            if idx.isValid():
-                row = idx.row() if dp == QAbstractItemView.DropIndicatorPosition.AboveItem else idx.row() + 1
+            if target is None:
+                row, after = self.view._drop_target(e.position().toPoint())
             else:
-                row = self.model.rowCount()
+                row, after = target
+            row = max(0, min(row, self.model.rowCount()))
+            if after:
+                row += 1
             idset = set(ids)
             cur = self.store.group()
             in_current = all(any(i.id == x for i in cur.items) for x in idset)
