@@ -159,6 +159,18 @@ class SettingsWindow(QDialog):
         self.ck_autostart.setChecked(autostart.is_enabled())
         form_sys.addRow(self.ck_autostart)
 
+        # 数据目录:可迁移到任意文件夹(指针文件记录,删掉即回默认)
+        row_dir = QHBoxLayout()
+        self.lb_datadir = QLabel(self)
+        self.lb_datadir.setToolTip(str(store.dir))
+        btn_change_dir = QPushButton("更改…")
+        btn_reset_dir = QPushButton("使用默认位置")
+        row_dir.addWidget(self.lb_datadir, 1)
+        row_dir.addWidget(btn_change_dir)
+        row_dir.addWidget(btn_reset_dir)
+        form_sys.addRow("数据目录", row_dir)
+        self._refresh_data_dir_label()
+
         row_data = QHBoxLayout()
         btn_export = QPushButton("导出配置…")
         btn_import = QPushButton("导入配置…")
@@ -194,6 +206,8 @@ class SettingsWindow(QDialog):
         btn_export.clicked.connect(self._export)
         btn_import.clicked.connect(self._import)
         btn_folder.clicked.connect(self._open_config_dir)
+        btn_change_dir.clicked.connect(self._change_data_dir)
+        btn_reset_dir.clicked.connect(self._use_default_data_dir)
 
     # ---------- 应用 ----------
 
@@ -268,6 +282,79 @@ class SettingsWindow(QDialog):
 
     def _open_config_dir(self) -> None:
         os.startfile(str(self._store.dir))
+
+    # ---------- 数据目录迁移 ----------
+
+    def _refresh_data_dir_label(self) -> None:
+        from lulen.config import default_data_dir, read_data_dir_pointer
+
+        home = os.path.expanduser("~")
+        text = str(self._store.dir)
+        if text.startswith(home):
+            text = "~" + text[len(home):]
+        if read_data_dir_pointer() is not None:
+            text += "(自定义)"
+        self.lb_datadir.setText(text)
+        self.lb_datadir.setToolTip(
+            f"{self._store.dir}\n默认位置:{default_data_dir()}")
+
+    def _change_data_dir(self) -> None:
+        new = QFileDialog.getExistingDirectory(self, "选择新的数据目录", str(self._store.dir))
+        if not new:
+            return
+        from pathlib import Path as _Path
+        new_dir = _Path(new)
+        if new_dir.resolve() == self._store.dir.resolve():
+            return
+        on_conflict = "keep"
+        if (new_dir / "config.json").exists():
+            box = QMessageBox(self)
+            box.setWindowTitle("Lulen")
+            box.setText("目标目录中已有 Lulen 配置,如何处理?")
+            keep = box.addButton("保留目标目录的数据", QMessageBox.ButtonRole.YesRole)
+            overwrite = box.addButton("用当前数据覆盖", QMessageBox.ButtonRole.NoRole)
+            box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked is keep:
+                on_conflict = "keep"
+            elif clicked is overwrite:
+                on_conflict = "overwrite"
+            else:
+                return
+        ok, err = self._store.relocate(new_dir, on_conflict)
+        if not ok:
+            QMessageBox.warning(self, "Lulen", err)
+            return
+        self._after_relocate()
+
+    def _use_default_data_dir(self) -> None:
+        from lulen.config import default_data_dir
+
+        default = default_data_dir()
+        if default.resolve() == self._store.dir.resolve():
+            return
+        ok, err = self._store.relocate(default, "keep")  # 默认目录常有旧数据,保留它
+        if not ok:
+            QMessageBox.warning(self, "Lulen", err)
+            return
+        from lulen.config import write_data_dir_pointer
+        write_data_dir_pointer(None)  # 清指针,回到默认位置
+        self._after_relocate()
+
+    def _after_relocate(self) -> None:
+        """迁移成功:面板整体重建、窗口字段按新配置刷新。"""
+        self._panel.reload_config()
+        self.settings_changed.emit()
+        self._refresh_data_dir_label()
+        self.ed_hotkey.setText(self._store.settings.hotkey)
+        self.cb_theme.setCurrentIndex(0 if self._store.settings.theme == "dark" else 1)
+        self.sp_icon.setValue(self._store.settings.icon_size)
+        self.sp_cols.setValue(self._store.settings.columns)
+        self.sp_rows.setValue(self._store.settings.rows)
+        self.sl_opacity.setValue(self._store.settings.opacity)
+        self._refresh_accent_btn()
+        QMessageBox.information(self, "Lulen", f"数据目录已切换到:\n{self._store.dir}")
 
     def closeEvent(self, e) -> None:
         self.settings_changed.emit()

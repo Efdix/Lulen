@@ -68,6 +68,41 @@ def main() -> int:
     he.keyPressEvent(ev_esc)
     check("hotkey capture esc keeps current", he.text() == "Ctrl+Shift+F9")  # 已捕获生效,esc 仅退出录制态
 
+    # ---- 数据目录:指针文件与迁移(默认目录 monkeypatch 到临时区,不碰真实数据)----
+    import lulen.config as C
+    anchor = Path(__import__("tempfile").mkdtemp(prefix="lulen-anchor-"))
+    dst = Path(__import__("tempfile").mkdtemp(prefix="lulen-dst-"))
+    orig_default = C.default_data_dir
+    orig_home = os.environ.get("LULEN_HOME")
+    C.default_data_dir = lambda: anchor
+    os.environ.pop("LULEN_HOME", None)
+    try:
+        check("datadir default is anchor", C.config_dir() == anchor)
+        alt = Path(__import__("tempfile").mkdtemp(prefix="lulen-alt-"))
+        C.write_data_dir_pointer(alt)
+        check("datadir pointer read back",
+              C.read_data_dir_pointer() == alt and C.config_dir() == alt)
+
+        s4 = C.ConfigStore()
+        s4.load()
+        s4.groups[0].items.append(C.Item.create("url", "迁移标记", "https://example.com"))
+        s4.save()
+        check("datadir store writes to pointer dir", s4.path.parent == alt.resolve())
+
+        ok, _err = s4.relocate(dst, "overwrite")
+        check("relocate to empty dir", ok and (dst / "config.json").exists())
+        check("relocate keeps items",
+              any(i.name == "迁移标记" for i in s4.groups[0].items))
+        check("relocate updates pointer", C.read_data_dir_pointer() == dst.resolve())
+
+        ok, _err = s4.relocate(anchor, "keep")  # 回默认位置(锚点里有旧数据 → 保留)
+        C.write_data_dir_pointer(None)
+        check("relocate back clears pointer", C.read_data_dir_pointer() is None)
+    finally:
+        C.default_data_dir = orig_default
+        if orig_home is not None:
+            os.environ["LULEN_HOME"] = orig_home
+
     hotkeys.unregister_all()
     print(f"SETTINGS-TEST {'PASS' if not FAILS else 'FAIL'} ({len(FAILS)} failed)", flush=True)
     return 0 if not FAILS else 1

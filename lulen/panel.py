@@ -1098,7 +1098,8 @@ class LulenPanel(QWidget):
         self._save_timer.start()
 
     def reload_config(self) -> None:
-        """配置被导入等场景:整体重建。"""
+        """配置被整体替换(导入/迁移数据目录)后重建。"""
         self.group_bar.rebuild()
         self.model.set_group(self.store.group().items)
         self.apply_settings()
+        self.hotkeys.register_all_item_hotkeys(self.store.all_items())

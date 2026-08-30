@@ -70,7 +70,9 @@ conda run -n Lulen python main.py
 
 ## 配置与数据
 
-配置位于 `%APPDATA%\Lulen\config.json`,结构一目了然(分组 → 条目数组),可手动编辑;损坏时自动回退 `config.bak.json`。用环境变量 `LULEN_HOME` 可把数据隔离到任意目录(便携模式 / 测试)。
+配置位于 `%APPDATA%\Lulen\config.json`,结构一目了然(分组 → 条目数组),可手动编辑;损坏时自动回退 `config.bak.json`。
+
+**数据目录可自定义**:设置 → 系统 → 数据目录 → 更改…,选择目标文件夹后自动把配置、备份、图标缓存整体迁移过去并在界面即时生效(自定义位置记录在 `%APPDATA%\Lulen\data_dir.txt` 指针文件里,删掉该文件即回默认位置)。用环境变量 `LULEN_HOME` 也可以覆盖数据目录(便携模式 / 测试,优先级最高)。
 
 ## 开发
 
