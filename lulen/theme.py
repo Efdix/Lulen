@@ -99,7 +99,7 @@ QTabBar {{
 QTabBar::tab {{
     border: none; background: transparent; color: {text_dim};
     padding: 4px 10px; border-radius: 8px; margin-right: 2px;
-    max-width: 96px;
+    max-width: 160px;
 }}
 QTabBar::tab:hover {{ background: {hover}; color: {text}; }}
 QTabBar::tab:selected {{

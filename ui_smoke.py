@@ -94,6 +94,7 @@ def main() -> int:
     # ---------- 1. 面板与条目 ----------
     check("panel visible", panel.isVisible())
     check("items loaded", panel.model.rowCount() >= 4)
+    check("tabs fill strip width", panel.group_bar._tabs.width() >= 300)
 
     # ---------- 2. 单击启动(记事本)----------
     idx = panel.model.index(0)

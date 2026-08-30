@@ -235,12 +235,13 @@ class LulenPanel(QWidget):
         self.group_bar.setFixedHeight(28)
         self.group_bar.rename_requested.connect(self.rename_group_by_id)
         self.group_bar.delete_requested.connect(self.delete_group_by_id)
-        h.addWidget(self.group_bar)
+        h.addWidget(self.group_bar, 1)   # 页签条占满可用宽度,长名字不省略
         self.drag_handle = QWidget(strip)
         self.drag_handle.setToolTip("拖动移动面板")
         self.drag_handle.setCursor(Qt.CursorShape.SizeAllCursor)
         self.drag_handle.setMouseTracking(True)
-        h.addWidget(self.drag_handle, 1)
+        self.drag_handle.setMinimumWidth(36)
+        h.addWidget(self.drag_handle)
         self.btn_lock = QToolButton(self.root)
         self.btn_lock.setObjectName("toolBtn")
         self.btn_lock.setToolTip("锁定面板位置")
@@ -584,14 +585,18 @@ class LulenPanel(QWidget):
                 if sides is not None:
                     self._start_native_resize(_SC_SIZE[sides])
                     return True
-        if obj in (self.drag_handle, self.group_bar):
+        if obj in (self.drag_handle, self.group_bar, self.group_bar._tabs):
             t = ev.type()
             if t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
+                if obj is self.group_bar._tabs and (
+                        self.store.settings.locked
+                        or self.group_bar._tabs.tabAt(ev.position().toPoint()) >= 0):
+                    return False  # 页签上的按压交给 QTabBar(切换分组)
                 if not self.store.settings.locked:
                     self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
                     self._drag_source = obj
                     obj.grabMouse()
-                return True
+                    return True
             if t == QEvent.Type.MouseMove and self._drag_offset is not None:
                 self.move(ev.globalPosition().toPoint() - self._drag_offset)
                 return True
