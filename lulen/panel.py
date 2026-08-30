@@ -30,7 +30,8 @@ from .theme import Palette, build_palette
 
 _BLUR_GRACE_MS = 1200  # 失焦后隐藏的宽限期:给"点选文件→拖拽"留时间
 _DRAG_RESCHEDULE_MS = 250  # 拖拽进行中时重查间隔
-_EDGE_PX = 7  # 窗口边缘的缩放热区宽度(px)
+_EDGE_INNER_PX = 10  # 可见边缘向内的热区宽度(逻辑 px;150% 缩放下太窄会很难抓)
+_EDGE_OUTER_PX = 18  # 可见边缘向外(阴影边距)的热区延伸(px)
 
 # Win32 SC_SIZE 目标边(SC_SIZE + 边代号)
 _SC_SIZE = {
@@ -114,6 +115,8 @@ class LulenPanel(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAcceptDrops(True)  # 面板整体(含页签条/边距)都能接住外部拖放
+        self.setMouseTracking(True)  # 顶层阴影边距区域也要能感知悬停(边缘缩放热区)
+        self.installEventFilter(self)
         self.setWindowTitle("Lulen")
 
         self._shadow_margin = 16
@@ -369,24 +372,33 @@ class LulenPanel(QWidget):
     # ================= 边缘拖拽调大小 =================
 
     def _edge_at(self, gp: QPoint) -> tuple[str, ...] | None:
-        """全局坐标落在窗口边缘热区时返回边组合,否则 None。"""
-        r = self.frameGeometry()
-        if not (r.left() - 2 <= gp.x() <= r.right() + 2
-                and r.top() - 2 <= gp.y() <= r.bottom() + 2):
+        """全局坐标落在**可见面板**边缘热区时返回边组合,否则 None。
+
+        以 root(可见面板)矩形为基准,而不是整个窗口——窗口四周还有
+        透明阴影边距,按窗口算热区会全部埋进不可见区域。
+        """
+        root = self.root
+        tl = root.mapToGlobal(QPoint(0, 0))
+        left, top = tl.x(), tl.y()
+        right, bottom = left + root.width() - 1, top + root.height() - 1
+        if not (left - _EDGE_OUTER_PX <= gp.x() <= right + _EDGE_OUTER_PX
+                and top - _EDGE_OUTER_PX <= gp.y() <= bottom + _EDGE_OUTER_PX):
             return None
         sides: list[str] = []
-        if gp.x() - r.left() <= _EDGE_PX:
+        if left - _EDGE_OUTER_PX < gp.x() < left + _EDGE_INNER_PX:
             sides.append("left")
-        if r.right() - gp.x() <= _EDGE_PX:
+        if right - _EDGE_INNER_PX < gp.x() < right + _EDGE_OUTER_PX:
             sides.append("right")
-        if gp.y() - r.top() <= _EDGE_PX:
+        if top - _EDGE_OUTER_PX < gp.y() < top + _EDGE_INNER_PX:
             sides.append("top")
-        if r.bottom() - gp.y() <= _EDGE_PX:
+        if bottom - _EDGE_INNER_PX < gp.y() < bottom + _EDGE_OUTER_PX:
             sides.append("bottom")
         return tuple(sides) or None
 
     def _start_native_resize(self, sc_size: int) -> None:
         """进入 Win32 原生调整循环(跟随鼠标实时缩放),结束后把尺寸回写设置。"""
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] native resize enter sc=0x{sc_size:04x}", flush=True)
         self._user_resizing = True
         try:
             user32 = ctypes.windll.user32
@@ -395,6 +407,8 @@ class LulenPanel(QWidget):
         finally:
             self._user_resizing = False
             self._manual_size = True
+            if os.environ.get("LULEN_DEBUG"):
+                print(f"[lulen] native resize exit w={self.width()} h={self.height()}", flush=True)
             self._sync_size_from_window()
 
     def _sync_size_from_window(self) -> None:
@@ -494,7 +508,7 @@ class LulenPanel(QWidget):
     def _event_filter_impl(self, obj, ev) -> bool:
         if getattr(self, "drag_handle", None) is None:
             return False  # 构建早期,过滤目标尚未创建
-        if obj is self.root:
+        if obj is self.root or obj is self:
             t = ev.type()
             if t == QEvent.Type.MouseMove and not self.store.settings.locked:
                 sides = self._edge_at(ev.globalPosition().toPoint())
@@ -509,6 +523,8 @@ class LulenPanel(QWidget):
             if (t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton
                     and not self.store.settings.locked):
                 sides = self._edge_at(ev.globalPosition().toPoint())
+                if os.environ.get("LULEN_DEBUG"):
+                    print(f"[lulen] press sides={sides} gp={ev.globalPosition()}", flush=True)
                 if sides is not None:
                     self._start_native_resize(_SC_SIZE[sides])
                     return True

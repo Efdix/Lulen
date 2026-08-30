@@ -282,6 +282,15 @@ def main() -> int:
     check("manual size preserved on item add", panel.height() == h_before)
     store.settings.columns, store.settings.rows = 10, 4
 
+    # ---------- 12. 边缘热区判定(以可见面板为基准,而非含阴影的窗口)----------
+    tl = panel.root.mapToGlobal(QPoint(0, 0))
+    gp_left = QPoint(tl.x() + 3, tl.y() + panel.root.height() // 2)
+    check("edge zone left", panel._edge_at(gp_left) == ("left",))
+    gp_corner = QPoint(tl.x() + 3, tl.y() + 3)
+    check("edge zone corner", set(panel._edge_at(gp_corner)) == {"left", "top"})
+    gp_mid = QPoint(tl.x() + panel.root.width() // 2, tl.y() + panel.root.height() // 2)
+    check("edge zone middle none", panel._edge_at(gp_mid) is None)
+
     panel.show_panel()
 
     panel.hide_now()
