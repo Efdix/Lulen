@@ -1,1 +1,2 @@
 PySide6-Essentials>=6.6
+pypinyin>=0.50

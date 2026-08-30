@@ -1,6 +1,7 @@
 """悬浮启动面板:无边框置顶工具窗,集成条目网格、分组页签、命令条与托盘联动。"""
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import time
@@ -229,13 +230,18 @@ class LulenPanel(QWidget):
         s = self.store.settings
         grid = self.view.gridSize()
         w = s.columns * grid.width() + 20 + 2 * self._shadow_margin + 2
-        h = 8 + 28 + 6 + s.rows * grid.height() + 10 + 2 * self._shadow_margin + 8 + 2
+        # 高度自适应:实际行数 = clamp(ceil(条目数/列数), 1, 设定行数)
+        count = self.model.rowCount()
+        used_rows = max(1, math.ceil(count / max(1, s.columns)))
+        rows = min(max(1, s.rows), used_rows)
+        h = 8 + 28 + 6 + rows * grid.height() + 10 + 2 * self._shadow_margin + 8 + 2
         self.resize(QSize(int(w), int(h)))
 
     def _update_empty(self) -> None:
         has_rows = self.model.rowCount() > 0
         self.empty_hint.setVisible(not has_rows)
         self.view.setVisible(True)
+        self._update_size()
 
     # ================= 显示 / 隐藏 =================
 
@@ -320,6 +326,8 @@ class LulenPanel(QWidget):
             return
         if QApplication.activePopupWidget() is not None:
             return
+        if QApplication.activeModalWidget() is not None:
+            return  # 自己弹出的对话框(编辑/设置)打开期间保持面板
         self.hide_animated()
 
     def keyPressEvent(self, e) -> None:  # noqa: N802
@@ -346,6 +354,14 @@ class LulenPanel(QWidget):
                 self.group_bar.releaseMouse()
                 self._save_pos()
                 return True
+            if t == QEvent.Type.Wheel:
+                delta = ev.angleDelta().y()
+                if delta:
+                    step = 1 if delta < 0 else -1
+                    n = len(self.store.groups)
+                    self.group_bar.set_current((self.store.current_group + step) % n)
+                    self._on_group_changed((self.store.current_group + step) % n)
+                return True
         if obj in (self.view, self.cmd) and ev.type() == QEvent.Type.KeyPress:
             return self._handle_key(obj, ev)
         return super().eventFilter(obj, ev)
@@ -359,6 +375,10 @@ class LulenPanel(QWidget):
                 self.hide_animated()
             return True
         if obj is self.cmd:
+            if key == Qt.Key.Key_Down and self.model.rowCount() > 0:
+                self.view.setCurrentIndex(self.model.index(0))
+                self.view.setFocus()
+                return True
             return False  # 其余交给输入框
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             idx = self.view.currentIndex()
@@ -394,6 +414,8 @@ class LulenPanel(QWidget):
                 self.model.set_filter("")
                 return
         self.model.set_filter(stripped)
+        if self.model.rowCount() > 0:
+            self.view.setCurrentIndex(self.model.index(0))  # 回车即启动第一个结果
 
     def _run_cmd(self) -> None:
         text = self.cmd.text().strip()

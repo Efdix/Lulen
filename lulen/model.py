@@ -12,7 +12,26 @@ from PySide6.QtGui import QIcon
 
 from .config import Item, tip_text
 
+try:  # 可选:拼音过滤搜索
+    from pypinyin import lazy_pinyin
+except ImportError:  # pragma: no cover
+    lazy_pinyin = None
+
 MIME_ITEM = "application/x-lulen-items"
+
+_PINYIN_CACHE: dict[str, str] = {}
+
+
+def _pinyin_of(name: str) -> str:
+    """条目名称的全拼(用于搜索),如 '记事本' -> 'jishiben'。"""
+    p = _PINYIN_CACHE.get(name)
+    if p is None:
+        if lazy_pinyin is not None:
+            p = "".join(lazy_pinyin(name)).lower()
+        else:
+            p = ""
+        _PINYIN_CACHE[name] = p
+    return p
 
 
 class ItemsModel(QAbstractListModel):
@@ -57,8 +76,13 @@ class ItemsModel(QAbstractListModel):
     def _refilter(self) -> None:
         if not self._filter:
             self._rows = list(self._items)
-        else:
-            self._rows = [i for i in self._items if self._filter in i.name.lower()]
+            return
+        f = self._filter
+        matched: list[Item] = []
+        for i in self._items:
+            if f in i.name.lower() or (len(f) <= 12 and _pinyin_of(i.name).startswith(f)):
+                matched.append(i)
+        self._rows = matched
 
     # ---------- 只读访问 ----------
 
@@ -84,7 +108,7 @@ class ItemsModel(QAbstractListModel):
             return self._icons.icon_for(item)
         if role == self.IdRole:
             return item.id
-        if role == self.TipRole:
+        if role == self.TipRole or role == Qt.ItemDataRole.ToolTipRole:
             return tip_text(item)
         return None
 

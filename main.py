@@ -23,7 +23,7 @@ from lulen import APP_NAME, APP_VERSION
 from lulen import hotkey as hk
 from lulen import icons as icons_mod
 from lulen import singleinstance, theme
-from lulen.config import ConfigStore, Group, Item
+from lulen.config import ConfigStore, Group, Item, new_id
 from lulen.hotkey import HotkeyManager
 from lulen.icons import IconService
 from lulen.panel import LulenPanel
@@ -54,7 +54,7 @@ def _seed_demo(store: ConfigStore) -> None:
         Item.create("folder", "下载", str(Path.home() / "Downloads")),
     ]
     store.groups[0].items = items
-    store.groups.append(Group(id=Item.create("folder", "", "").id, name="第二页", items=[
+    store.groups.append(Group(id=new_id(), name="第二页", items=[
         Item.create("url", "zhihu.com", "https://www.zhihu.com"),
         Item.create("app", "计算器", r"C:\Windows\System32\calc.exe"),
     ]))
@@ -107,6 +107,8 @@ def _selftest(store: ConfigStore, panel: LulenPanel) -> int:
     check("model filter hit", m.rowCount() == 1)
     m.set_filter("不存在的关键词")
     check("model filter miss", m.rowCount() == 0)
+    m.set_filter("li")  # "例" 的拼音前缀
+    check("model filter pinyin", m.rowCount() == 1)
     m.set_filter("")
 
     g = Group(id=C.new_id(), name="move", items=[
@@ -142,6 +144,7 @@ def main() -> int:
     parser.add_argument("--hidden", action="store_true", help="启动后仅驻留托盘")
     parser.add_argument("--selftest", action="store_true", help="离屏自检")
     parser.add_argument("--screenshot", metavar="PNG", help="渲染面板截图后退出")
+    parser.add_argument("--theme", choices=("dark", "light"), help="截图模式指定主题")
     parser.add_argument("--fresh", action="store_true", help="忽略现有配置(测试用)")
     parser.add_argument("--version", action="version", version=f"{APP_NAME} {APP_VERSION}")
     args = parser.parse_args()
@@ -165,6 +168,8 @@ def main() -> int:
         store.load()
     if args.screenshot and not store.groups[0].items:
         _seed_demo(store)
+    if args.theme:
+        store.settings.theme = args.theme
 
     _apply_style(app, store)
 
