@@ -90,6 +90,7 @@ class LulenPanel(QWidget):
 
         self._shadow_margin = 16
         self._drag_offset: QPoint | None = None
+        self._drag_source: QWidget | None = None
         self._hiding = False
         self._opacity_base = store.settings.opacity / 100
         self._last_launch: tuple[str, float] = ("", 0.0)
@@ -113,6 +114,8 @@ class LulenPanel(QWidget):
         self.view.installEventFilter(self)
         self.cmd.installEventFilter(self)
         self.group_bar.installEventFilter(self)
+        self.group_bar._tabs.installEventFilter(self)
+        self.drag_handle.installEventFilter(self)
         self.model.set_group(self.store.group().items)
 
         self._save_timer = QTimer(self)
@@ -135,15 +138,21 @@ class LulenPanel(QWidget):
         v.setContentsMargins(10, 8, 10, 10)
         v.setSpacing(6)
 
-        # 顶部:分组页签 + 工具按钮(同时充当拖拽移动的把手区)
+        # 顶部:分组页签 + 拖拽把手 + 工具按钮
         strip = QWidget(self.root)
         h = QHBoxLayout(strip)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(2)
         self.group_bar = GroupBar(self.store, self)
         self.group_bar.setFixedHeight(28)
+        self.group_bar.rename_requested.connect(self.rename_group_by_id)
+        self.group_bar.delete_requested.connect(self.delete_group_by_id)
         h.addWidget(self.group_bar)
-        h.addStretch(1)
+        self.drag_handle = QWidget(strip)
+        self.drag_handle.setToolTip("拖动移动面板")
+        self.drag_handle.setCursor(Qt.CursorShape.SizeAllCursor)
+        self.drag_handle.setMouseTracking(True)
+        h.addWidget(self.drag_handle, 1)
         self.btn_lock = QToolButton(self.root)
         self.btn_lock.setObjectName("toolBtn")
         self.btn_lock.setToolTip("锁定面板位置")
@@ -339,19 +348,22 @@ class LulenPanel(QWidget):
     # ================= 拖拽移动 / 键盘 / 命令条 =================
 
     def eventFilter(self, obj, ev) -> bool:  # noqa: N802
-        if obj is self.group_bar:
+        if obj in (self.drag_handle, self.group_bar):
             t = ev.type()
             if t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
                 if not self.store.settings.locked:
                     self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
-                    self.group_bar.grabMouse()
+                    self._drag_source = obj
+                    obj.grabMouse()
                 return True
             if t == QEvent.Type.MouseMove and self._drag_offset is not None:
                 self.move(ev.globalPosition().toPoint() - self._drag_offset)
                 return True
             if t == QEvent.Type.MouseButtonRelease and self._drag_offset is not None:
                 self._drag_offset = None
-                self.group_bar.releaseMouse()
+                if self._drag_source is not None:
+                    self._drag_source.releaseMouse()
+                    self._drag_source = None
                 self._save_pos()
                 return True
             if t == QEvent.Type.Wheel:
@@ -359,8 +371,9 @@ class LulenPanel(QWidget):
                 if delta:
                     step = 1 if delta < 0 else -1
                     n = len(self.store.groups)
-                    self.group_bar.set_current((self.store.current_group + step) % n)
-                    self._on_group_changed((self.store.current_group + step) % n)
+                    new_index = (self.store.current_group + step) % n
+                    self.group_bar.set_current(new_index)
+                    self._on_group_changed(new_index)
                 return True
         if obj in (self.view, self.cmd) and ev.type() == QEvent.Type.KeyPress:
             return self._handle_key(obj, ev)
@@ -742,6 +755,12 @@ class LulenPanel(QWidget):
     def _refresh_groups(self, current: int) -> None:
         self.store.current_group = self.store._clamp_group(current)
         self.group_bar.rebuild()
+        self.model.set_group(self.store.group().items)
+        self._touch()
+
+    def on_group_order_changed(self, new_current: int) -> None:
+        """页签被拖动重排后刷新当前分组(QTabBar 已同步 store.groups)。"""
+        self.store.current_group = self.store._clamp_group(new_current)
         self.model.set_group(self.store.group().items)
         self._touch()
 

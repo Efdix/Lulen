@@ -123,10 +123,10 @@ def main() -> int:
         check("empty menu has new+settings", "新建条目…" in eactions and "设置…" in eactions)
         empty_menu.clear()
         empty_menu.deleteLater()
-    tab_count = len(panel.group_bar._tabs)
+    tab_count = panel.group_bar._tabs.count()
     check("tabs exist", tab_count >= 2)
     if tab_count >= 2:
-        QTest.mouseClick(panel.group_bar._tabs[1], Qt.MouseButton.LeftButton)
+        panel.group_bar._tabs.setCurrentIndex(1)  # currentChanged → 切组
         wait(250)
         check("group switched", store.current_group == 1 and panel.model.rowCount() >= 1)
         snap("smoke-group2.png")

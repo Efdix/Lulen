@@ -93,6 +93,19 @@ QListView {{
     font-weight: 600;
 }}
 #groupTab[dropHover="true"] {{ background: {_rgba(accent, 90)}; }}
+QTabBar {{
+    background: transparent; font-size: 12px;
+}}
+QTabBar::tab {{
+    border: none; background: transparent; color: {text_dim};
+    padding: 4px 10px; border-radius: 8px; margin-right: 2px;
+    max-width: 96px;
+}}
+QTabBar::tab:hover {{ background: {hover}; color: {text}; }}
+QTabBar::tab:selected {{
+    background: {_rgba(accent, 44)}; color: {accent.name()};
+    font-weight: 600;
+}}
 #addTab {{
     border: none; background: transparent; color: {text_dim};
     padding: 2px 8px; border-radius: 8px; font-size: 13px; font-weight: 600;
