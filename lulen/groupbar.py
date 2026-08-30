@@ -1,6 +1,8 @@
 """分组页签条:基于 QTabBar(原生拖拽重排),支持跨组拖入条目与右键管理。"""
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QColor
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
@@ -41,6 +43,8 @@ class GroupTabs(QTabBar):
     # ---------- 拖拽换组 ----------
 
     def dragEnterEvent(self, e) -> None:  # noqa: N802
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] tabs dragEnter has_item={e.mimeData().hasFormat(MIME_ITEM)}", flush=True)
         if e.mimeData().hasFormat(MIME_ITEM) and not self._panel_locked():
             e.acceptProposedAction()
             self._mark_drag(True)
@@ -62,8 +66,10 @@ class GroupTabs(QTabBar):
         self._set_drop_tab(-1)
 
     def dropEvent(self, e) -> None:  # noqa: N802
+        index = self._tab_at_or_nearest(e.position().toPoint())
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] tabs drop index={index} raw={self.tabAt(e.position().toPoint())}", flush=True)
         self._switch_timer.stop()
-        index = self.tabAt(e.position().toPoint())
         self._drop_index = -1
         self._mark_drag(False)
         self._set_drop_tab(-1)
@@ -73,6 +79,18 @@ class GroupTabs(QTabBar):
         if ids and index < len(self._store.groups):
             self.items_dropped.emit(self._store.groups[index].id, ids)
             e.acceptProposedAction()
+
+    def _tab_at_or_nearest(self, pos: QPoint) -> int:
+        """页签命中;落在页签缝隙/上下边缘时取最近的页签(避免静默丢失拖放)。"""
+        index = self.tabAt(pos)
+        if index >= 0:
+            return index
+        best, dist = -1, 1 << 30
+        for j in range(self.count()):
+            d = abs(self.tabRect(j).center().x() - pos.x())
+            if d < dist:
+                best, dist = j, d
+        return best if dist <= 60 else -1
 
     def _set_drop_tab(self, index: int) -> None:
         """拖拽悬停时高亮目标页签(文字染成强调色),离开/落下后复原。"""
@@ -97,13 +115,15 @@ class GroupTabs(QTabBar):
         return self._store.settings.locked
 
     def _update_drop_hover(self, pos: QPoint) -> None:
-        index = self.tabAt(pos)
+        index = self._tab_at_or_nearest(pos)
         self._set_drop_tab(index)
         if index != self._drop_index:
             self._drop_index = index
             self._switch_timer.start()
 
     def _switch_under_drag(self) -> None:
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] tabs hover-switch -> {self._drop_index}", flush=True)
         if 0 <= self._drop_index < self.count():
             self.setCurrentIndex(self._drop_index)
 

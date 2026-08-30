@@ -66,6 +66,21 @@ class GridView(QListView):
         super().__init__(panel)
         self._panel = panel
 
+    def startDrag(self, actions) -> None:  # noqa: N802
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] view startDrag actions={actions}", flush=True)
+        super().startDrag(actions)
+
+    def mousePressEvent(self, e) -> None:  # noqa: N802
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] view press at {e.position()}", flush=True)
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e) -> None:  # noqa: N802
+        if os.environ.get("LULEN_DEBUG"):
+            print(f"[lulen] view move at {e.position()} buttons={e.buttons()}", flush=True)
+        super().mouseMoveEvent(e)
+
     def dragEnterEvent(self, e) -> None:  # noqa: N802
         md = e.mimeData()
         if md.hasFormat(MIME_ITEM) and self._panel.model.filtered:
