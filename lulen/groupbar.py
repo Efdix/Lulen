@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QColor
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
 
 from .config import ConfigStore
@@ -23,6 +23,7 @@ class GroupTabs(QTabBar):
         super().__init__(parent)
         self._store = store
         self._drop_index = -1
+        self._highlight = -1
         self.setMovable(True)
         self.setExpanding(False)
         self.setDrawBase(False)
@@ -58,12 +59,14 @@ class GroupTabs(QTabBar):
         self._switch_timer.stop()
         self._drop_index = -1
         self._mark_drag(False)
+        self._set_drop_tab(-1)
 
     def dropEvent(self, e) -> None:  # noqa: N802
         self._switch_timer.stop()
         index = self.tabAt(e.position().toPoint())
         self._drop_index = -1
         self._mark_drag(False)
+        self._set_drop_tab(-1)
         if index < 0:
             return
         ids = [x for x in bytes(e.mimeData().data(MIME_ITEM)).decode("utf-8").split(",") if x]
@@ -71,9 +74,19 @@ class GroupTabs(QTabBar):
             self.items_dropped.emit(self._store.groups[index].id, ids)
             e.acceptProposedAction()
 
+    def _set_drop_tab(self, index: int) -> None:
+        """拖拽悬停时高亮目标页签(文字染成强调色),离开/落下后复原。"""
+        if index == self._highlight:
+            return
+        if 0 <= self._highlight < self.count():
+            self.setTabTextColor(self._highlight, QColor())  # 无效色 = 复原
+        self._highlight = index
+        if index >= 0:
+            self.setTabTextColor(index, QColor(self._store.settings.accent))
+
     def _mark_drag(self, over: bool) -> None:
-        panel = self.parent()
-        if panel is None:
+        panel = getattr(self.parent(), "_panel", None) or self.parent()
+        if panel is None or not hasattr(panel, "_begin_drag_hover"):
             return
         if over:
             panel._begin_drag_hover()
@@ -85,6 +98,7 @@ class GroupTabs(QTabBar):
 
     def _update_drop_hover(self, pos: QPoint) -> None:
         index = self.tabAt(pos)
+        self._set_drop_tab(index)
         if index != self._drop_index:
             self._drop_index = index
             self._switch_timer.start()
@@ -165,7 +179,8 @@ class GroupBar(QWidget):
             bar.removeTab(bar.count() - 1)
         for g in self._store.groups:
             bar.addTab(g.name)
-            bar.setTabToolTip(bar.count() - 1, g.name)
+            bar.setTabToolTip(bar.count() - 1, f"{g.name}(拖动条目到此页签可移入该分组)")
+        self._highlight = -1
         bar.blockSignals(False)
         self.set_current(self._store.current_group)
 

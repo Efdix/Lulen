@@ -704,17 +704,27 @@ class LulenPanel(QWidget):
         return False
 
     def _move_items_to_group(self, target_gid: str, ids: list) -> None:
-        cur = self.store.group()
+        """把条目移入目标分组。
+
+        源分组按条目 ID 反查,而不是取"当前分组":拖到页签时悬停会自动
+        切换分组,松手时当前分组可能已经是目标分组,若按当前组计算会
+        误判为"原地不动"导致条目永远移不过去。
+        """
         tgt = next((g for g in self.store.groups if g.id == target_gid), None)
-        if tgt is None or tgt is cur:
+        idset = set(ids or ())
+        if tgt is None or not idset:
             return
-        idset = set(ids)
-        moved = [i for i in cur.items if i.id in idset]
+        moved: list[Item] = []
+        for g in self.store.groups:
+            keep = [i for i in g.items if i.id not in idset]
+            if len(keep) != len(g.items):
+                moved.extend(i for i in g.items if i.id in idset)
+                g.items = keep
         if not moved:
             return
-        cur.items = [i for i in cur.items if i.id not in idset]
         tgt.items.extend(moved)
-        self.model.set_group(cur.items)
+        # 悬停切换时当前组是目标组,快速落下时当前组是源组——两种都受影响
+        self.model.set_group(self.store.group().items)
         self._touch()
 
     # ================= 右键菜单 =================

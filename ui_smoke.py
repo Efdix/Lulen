@@ -291,6 +291,40 @@ def main() -> int:
     gp_mid = QPoint(tl.x() + panel.root.width() // 2, tl.y() + panel.root.height() // 2)
     check("edge zone middle none", panel._edge_at(gp_mid) is None)
 
+    # ---------- 13. 跨分组拖拽:页签落下,快速落与悬停切换两种时序 ----------
+    store.current_group = 0
+    panel.model.set_group(store.group().items)
+    wait(150)
+    bar = panel.group_bar._tabs
+    item_a = store.groups[0].items[0]
+    md3 = QMimeData()
+    md3.setData(MIME_ITEM_IDS, item_a.id.encode("utf-8"))
+    ev3 = QDropEvent(bar.tabRect(1).center(), Qt.DropAction.MoveAction, md3,
+                     Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    bar.dropEvent(ev3)  # 快速落下(未触发悬停切换)
+    wait(150)
+    check("tab drop fast moves item",
+          any(i.id == item_a.id for i in store.groups[1].items)
+          and not any(i.id == item_a.id for i in store.groups[0].items))
+
+    item_b = store.groups[0].items[0]
+    bar.setCurrentIndex(1)  # 模拟悬停 550ms 后自动切换到目标分组
+    wait(200)
+    md4 = QMimeData()
+    md4.setData(MIME_ITEM_IDS, item_b.id.encode("utf-8"))
+    ev4 = QDropEvent(bar.tabRect(1).center(), Qt.DropAction.MoveAction, md4,
+                     Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    bar.dropEvent(ev4)
+    wait(150)
+    check("tab drop after hover-switch moves item",
+          any(i.id == item_b.id for i in store.groups[1].items)
+          and not any(i.id == item_b.id for i in store.groups[0].items))
+
+    # 还原:两个条目移回分组 0
+    panel._move_items_to_group(store.groups[0].id, [item_a.id, item_b.id])
+    wait(150)
+    check("move back to group 0", len(store.groups[0].items) >= 5)
+
     panel.show_panel()
 
     panel.hide_now()
