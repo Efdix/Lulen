@@ -500,8 +500,13 @@ class LulenPanel(QWidget):
     def _external_drag_ok(self, e) -> bool:
         if os.environ.get("LULEN_DEBUG"):
             md = e.mimeData()
+            w = self.childAt(e.position().toPoint())
+            chain = []
+            while w is not None:
+                chain.append(type(w).__name__)
+                w = w.parentWidget()
             print(f"[lulen] dragEnter urls={md.hasUrls()} item={md.hasFormat(MIME_ITEM)} "
-                  f"text={md.hasText() and md.text().strip()[:40]!r}", flush=True)
+                  f"text={md.hasText() and md.text().strip()[:40]!r} under={chain}", flush=True)
         md = e.mimeData()
         return bool(md.hasFormat(MIME_ITEM) or md.hasUrls()
                     or (md.hasText() and md.text().strip()))
@@ -738,8 +743,12 @@ class LulenPanel(QWidget):
         if not moved:
             return
         tgt.items.extend(moved)
-        # 悬停切换时当前组是目标组,快速落下时当前组是源组——两种都受影响
-        self.model.set_group(self.store.group().items)
+        # 落到哪个分组就显示哪个分组:让"移动"在界面上可见,
+        # 否则源分组变空、条目看起来像凭空消失
+        tgt_index = self.store.groups.index(tgt)
+        self.store.current_group = tgt_index
+        self.group_bar.set_current(tgt_index)
+        self.model.set_group(tgt.items)
         self._touch()
 
     # ================= 右键菜单 =================
