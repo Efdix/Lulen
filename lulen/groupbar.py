@@ -12,7 +12,7 @@ _TAB_MAX_W = 104
 
 
 class _Tab(QPushButton):
-    """单个分组页签,支持把条目拖进来换组。"""
+    """单个分组页签,支持把条目拖进来换组、右键管理分组。"""
 
     def __init__(self, group_id: str, text: str, host: "GroupBar") -> None:
         super().__init__(text)
@@ -23,6 +23,8 @@ class _Tab(QPushButton):
         self.setAcceptDrops(True)
         self.setMaximumWidth(_TAB_MAX_W)
         self.setToolTip(text)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_menu)
         self._switch_timer = QTimer(self)
         self._switch_timer.setSingleShot(True)
         self._switch_timer.setInterval(550)
@@ -31,6 +33,14 @@ class _Tab(QPushButton):
     @property
     def group_id(self) -> str:
         return self._gid
+
+    def _show_menu(self, pos) -> None:
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.addAction("重命名分组…", lambda: self._host.rename_requested.emit(self._gid))
+        menu.addAction("删除分组", lambda: self._host.delete_requested.emit(self._gid))
+        menu.exec(self.mapToGlobal(pos))
 
     def set_display_text(self, text: str) -> None:
         fm = QFontMetrics(self.font())
@@ -74,7 +84,9 @@ class GroupBar(QWidget):
     """分组页签条 + 新建按钮。"""
 
     current_changed = Signal(int)
-    items_dropped = Signal(str, list)  # 目标分组 id, 条目 id 列表
+    items_dropped = Signal(str, list)          # 目标分组 id, 条目 id 列表
+    rename_requested = Signal(str)             # 分组 id
+    delete_requested = Signal(str)             # 分组 id
 
     def __init__(self, store: ConfigStore, host_panel) -> None:
         super().__init__(host_panel)
@@ -85,6 +97,8 @@ class GroupBar(QWidget):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._group.idClicked.connect(self._on_tab_clicked)
+        self.rename_requested.connect(host_panel.rename_group_by_id)
+        self.delete_requested.connect(host_panel.delete_group_by_id)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(2, 0, 0, 0)

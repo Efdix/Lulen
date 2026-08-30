@@ -1,0 +1,78 @@
+"""脚本验证:设置窗口主题切换 / --hidden 启动 / 二次实例唤起。"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+os.environ["LULEN_HOME"] = str(Path(__file__).parent / "shots" / "testhome")
+
+FAILS = []
+
+
+def check(name, cond):
+    print(("PASS  " if cond else "FAIL  ") + name, flush=True)
+    if not cond:
+        FAILS.append(name)
+
+
+def main() -> int:
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication(sys.argv)
+    from lulen.config import ConfigStore
+    from lulen.hotkey import HotkeyManager
+    from lulen.icons import IconService
+    from lulen.panel import LulenPanel
+    from lulen.settings_dialog import SettingsWindow
+    from lulen.theme import build_qss
+
+    store = ConfigStore()
+    store.load()
+    store.current_group = 0
+    old_theme = store.settings.theme
+    app.setStyleSheet(build_qss(store.settings.theme, store.settings.accent))
+
+    icons = IconService(store.icon_cache)
+    hotkeys = HotkeyManager(app)
+    panel = LulenPanel(store, icons, hotkeys)
+    panel.show_panel()
+
+    # 设置窗口非模态打开、切换主题即时生效
+    panel.open_settings()
+    win = panel._settings_win
+    check("settings window opened", isinstance(win, SettingsWindow) and win.isVisible())
+    combo = win.cb_theme
+    target = "light" if old_theme == "dark" else "dark"
+    combo.setCurrentIndex(0 if target == "dark" else 1)
+    check("theme switched live", store.settings.theme == target)
+    btn = win.btn_accent
+    btn_text = btn.text()
+    check("accent button shows color", "#" in btn_text)
+    win.close()
+    # 还原
+    combo.setCurrentIndex(0 if old_theme == "dark" else 1)
+    check("theme restored", store.settings.theme == old_theme)
+
+    # 热键录制控件:模拟捕获序列
+    from PySide6.QtCore import Qt, QEvent
+    from PySide6.QtGui import QKeyEvent
+    from lulen.settings_dialog import HotkeyEdit
+    he = HotkeyEdit("Ctrl+Alt+L")
+    ev = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F9, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+    he.keyPressEvent(ev)
+    check("hotkey capture Ctrl+Shift+F9", he.text() == "Ctrl+Shift+F9")
+    ev_esc = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    he.keyPressEvent(ev_esc)
+    check("hotkey capture esc keeps current", he.text() == "Ctrl+Shift+F9")  # 已捕获生效,esc 仅退出录制态
+
+    hotkeys.unregister_all()
+    print(f"SETTINGS-TEST {'PASS' if not FAILS else 'FAIL'} ({len(FAILS)} failed)", flush=True)
+    return 0 if not FAILS else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

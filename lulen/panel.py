@@ -715,6 +715,18 @@ class LulenPanel(QWidget):
         g.name = name.strip() or g.name
         self._refresh_groups(index)
 
+    def rename_group_by_id(self, group_id: str) -> None:
+        for i, g in enumerate(self.store.groups):
+            if g.id == group_id:
+                self.rename_group(i)
+                return
+
+    def delete_group_by_id(self, group_id: str) -> None:
+        for i, g in enumerate(self.store.groups):
+            if g.id == group_id:
+                self.delete_group(i)
+                return
+
     def delete_group(self, index: int) -> None:
         if len(self.store.groups) <= 1:
             self.notify_requested.emit("Lulen", "至少保留一个分组")
