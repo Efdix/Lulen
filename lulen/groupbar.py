@@ -169,6 +169,7 @@ class GroupBar(QWidget):
         self.setObjectName("strip")
         self._store = store
         self._panel = host_panel
+        self.setCursor(Qt.CursorShape.SizeAllCursor)  # 空白区域(页签右侧)拖动面板
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(2, 0, 0, 0)
@@ -181,6 +182,7 @@ class GroupBar(QWidget):
         self._plus.clicked.connect(self._panel.new_group)
 
         self._tabs = GroupTabs(store, self)
+        self._tabs.setCursor(Qt.CursorShape.ArrowCursor)  # 悬停空白区时由过滤器切成十字
         self._tabs.currentChanged.connect(self._on_current_changed)
         self._tabs.items_dropped.connect(self.items_dropped.emit)
         self._tabs.rename_requested.connect(self.rename_requested.emit)

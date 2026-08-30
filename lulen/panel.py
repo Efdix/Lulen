@@ -615,15 +615,25 @@ class LulenPanel(QWidget):
                 if not self.store.settings.locked:
                     self._drag_offset = ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
                     self._drag_source = obj
+                    obj.setCursor(Qt.CursorShape.SizeAllCursor)
                     obj.grabMouse()
                     return True
-            if t == QEvent.Type.MouseMove and self._drag_offset is not None:
-                self.move(ev.globalPosition().toPoint() - self._drag_offset)
-                return True
+            if t == QEvent.Type.MouseMove:
+                if self._drag_offset is not None:
+                    self.move(ev.globalPosition().toPoint() - self._drag_offset)
+                    return True
+                # 页签条空白区显示移动十字;悬停在页签本体上则恢复箭头
+                if (obj is self.group_bar._tabs and not self.store.settings.locked
+                        and self.group_bar._tabs.tabAt(ev.position().toPoint()) < 0):
+                    self.group_bar._tabs.setCursor(Qt.CursorShape.SizeAllCursor)
+                elif obj is self.group_bar._tabs:
+                    self.group_bar._tabs.setCursor(Qt.CursorShape.ArrowCursor)
+                return False
             if t == QEvent.Type.MouseButtonRelease and self._drag_offset is not None:
                 self._drag_offset = None
                 if self._drag_source is not None:
                     self._drag_source.releaseMouse()
+                    self._drag_source.unsetCursor()
                     self._drag_source = None
                 self._save_pos()
                 return True

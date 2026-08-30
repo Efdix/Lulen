@@ -301,6 +301,23 @@ def main() -> int:
     gp_mid = QPoint(tl.x() + panel.root.width() // 2, tl.y() + panel.root.height() // 2)
     check("edge zone middle none", panel._edge_at(gp_mid) is None)
 
+    # ---------- 12b. 页签条:容器空白区显示移动十字,页签本体显示箭头 ----------
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    gb = panel.group_bar
+    check("group bar shows move cursor", gb.cursor().shape() == Qt.CursorShape.SizeAllCursor)
+    bar = gb._tabs
+
+    def hover_tabs(pos: QPoint) -> None:
+        ev = QMouseEvent(QEvent.Type.MouseMove, QPointF(pos),
+                         Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+                         Qt.KeyboardModifier.NoModifier)
+        panel._event_filter_impl(bar, ev)
+
+    hover_tabs(bar.tabRect(0).center())
+    check("tab area shows arrow cursor",
+          bar.cursor().shape() == Qt.CursorShape.ArrowCursor)
+
     # ---------- 13. 跨分组拖拽:页签落下,快速落与悬停切换两种时序 ----------
     store.current_group = 0
     panel.model.set_group(store.group().items)
