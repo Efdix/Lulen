@@ -707,8 +707,16 @@ class LulenPanel(QWidget):
                 row = idx.row() if dp == QAbstractItemView.DropIndicatorPosition.AboveItem else idx.row() + 1
             else:
                 row = self.model.rowCount()
-            if self.model.move_ids(ids, row):
-                self._touch()
+            idset = set(ids)
+            cur = self.store.group()
+            in_current = all(any(i.id == x for i in cur.items) for x in idset)
+            if in_current:
+                if self.model.move_ids(ids, row):
+                    self._touch()
+            else:
+                # 条目来自其他分组:悬停页签自动翻组后"放进面板"的手势,
+                # 按拖入位置插入当前分组
+                self._move_ids_into_current_group(ids, row)
             return True
         paths: list[str] = [u.toLocalFile() for u in md.urls() if u.isLocalFile()]
         if not paths and md.hasUrls():
@@ -722,6 +730,27 @@ class LulenPanel(QWidget):
             self._touch()
             return True
         return False
+
+    def _move_ids_into_current_group(self, ids: list, row: int) -> None:
+        """把其他分组的条目移入当前分组并插入到 row 位置。
+
+        对应"拖到目标页签、悬停自动翻组后把图标放进面板"的手势:
+        条目不在当前分组时,按 ID 反查源分组移除,再插入落点行。
+        """
+        idset = set(ids)
+        moved: list[Item] = []
+        for g in self.store.groups:
+            keep = [i for i in g.items if i.id not in idset]
+            if len(keep) != len(g.items):
+                moved.extend(i for i in g.items if i.id in idset)
+                g.items = keep
+        if not moved:
+            return
+        cur = self.store.group()
+        row = max(0, min(row, len(cur.items)))
+        cur.items[row:row] = moved
+        self.model.set_group(cur.items)
+        self._touch()
 
     def _move_items_to_group(self, target_gid: str, ids: list) -> None:
         """把条目移入目标分组。

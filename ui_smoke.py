@@ -325,6 +325,32 @@ def main() -> int:
     wait(150)
     check("move back to group 0", len(store.groups[0].items) >= 5)
 
+    # ---------- 14. 悬停翻组后"放进面板"的跨组手势 ----------
+    store.current_group = 0
+    panel.model.set_group(store.group().items)
+    wait(150)
+    item_c = store.groups[0].items[0]
+    panel.group_bar.switch_to_group_id(store.groups[1].id)  # 模拟悬停自动翻组
+    wait(200)
+    check("hover-switch changed page", store.current_group == 1)
+    md5 = QMimeData()
+    md5.setData(MIME_ITEM_IDS, item_c.id.encode("utf-8"))
+    target_pos = (panel.view.visualRect(panel.model.index(1)).center()
+                  if panel.model.rowCount() > 1 else
+                  panel.view.visualRect(panel.model.index(0)).center())
+    ev5 = QDropEvent(target_pos, Qt.DropAction.MoveAction, md5,
+                     Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    panel.handle_drop(ev5)  # 翻组后把条目"放进面板"松手
+    wait(150)
+    check("drop into panel after hover-switch moves item",
+          any(i.id == item_c.id for i in store.groups[1].items)
+          and not any(i.id == item_c.id for i in store.groups[0].items))
+    # 还原
+    panel._move_items_to_group(store.groups[0].id, [item_c.id])
+    store.current_group = 0
+    panel.model.set_group(store.group().items)
+    wait(150)
+
     panel.show_panel()
 
     panel.hide_now()
