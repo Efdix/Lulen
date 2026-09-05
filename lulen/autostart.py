@@ -1,4 +1,9 @@
-"""开机自启:写 HKCU Run 注册表项,指向 pythonw + main.py --hidden。"""
+"""开机自启:写 HKCU Run 注册表项。
+
+命令行:exe 打包版指向 ``"<exe路径>" --hidden``;源码运行指向 pythonw + main.py --hidden。
+启动时由 :func:`sync` 按 config 开关自愈——exe 被移动后注册表指向的旧路径会被重写为当前
+exe,记录被外部清理也会补回;``LULEN_HOME``(测试/便携)不触碰注册表。
+"""
 from __future__ import annotations
 
 import os
