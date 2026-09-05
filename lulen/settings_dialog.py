@@ -81,6 +81,7 @@ class HotkeyEdit(QLineEdit):
 class SettingsWindow(QDialog):
     settings_changed = Signal()
     hotkey_change_failed = Signal(str)
+    notify_requested = Signal(str, str)
 
     def __init__(self, panel, store: ConfigStore, hotkeys: HotkeyManager, parent=None) -> None:
         super().__init__(parent)
@@ -144,11 +145,11 @@ class SettingsWindow(QDialog):
         self.ck_single.setChecked(store.settings.single_click)
         form_act.addRow(self.ck_single)
 
-        self.ck_blur = QCheckBox("失焦自动隐藏", self)
+        self.ck_blur = QCheckBox("失焦自动隐藏(锁定面板时无效)", self)
         self.ck_blur.setChecked(store.settings.hide_on_blur)
         form_act.addRow(self.ck_blur)
 
-        self.ck_hide_launch = QCheckBox("启动条目后自动隐藏面板", self)
+        self.ck_hide_launch = QCheckBox("启动条目后自动隐藏面板(锁定面板时无效)", self)
         self.ck_hide_launch.setChecked(store.settings.hide_after_launch)
         form_act.addRow(self.ck_hide_launch)
 
@@ -241,6 +242,7 @@ class SettingsWindow(QDialog):
             self.ck_autostart.blockSignals(True)
             self.ck_autostart.setChecked(autostart.is_enabled())
             self.ck_autostart.blockSignals(False)
+            self.notify_requested.emit("开机自启设置失败", "注册表写入被拒绝,请检查杀毒软件或权限")
 
     def _pick_accent(self) -> None:
         color = QColorDialog.getColor(QColor(self._store.settings.accent), self, "选择强调色")

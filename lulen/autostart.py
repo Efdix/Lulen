@@ -1,6 +1,7 @@
 """开机自启:写 HKCU Run 注册表项,指向 pythonw + main.py --hidden。"""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -54,3 +55,21 @@ def set_enabled(on: bool) -> bool:
         return True
     except OSError:
         return False
+
+
+def sync(enabled: bool) -> str | None:
+    """启动自愈:按 config 里的开关校正注册表项,返回动作("rewritten"/"cleared")或 None。
+
+    exe 被移动后注册表仍指向旧路径,或记录被外部清理,这里以当前运行环境为准重写;
+    ``LULEN_HOME``(测试/便携)不动注册表。"""
+    if winreg is None or os.environ.get("LULEN_HOME"):
+        return None
+    current = _query()
+    if enabled:
+        if current != _command():
+            return "rewritten" if set_enabled(True) else None
+        return None
+    if current is not None:
+        set_enabled(False)
+        return "cleared"
+    return None

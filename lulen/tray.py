@@ -13,6 +13,7 @@ class Tray(QSystemTrayIcon):
     toggle_requested = Signal()
     show_settings = Signal()
     quit_requested = Signal()
+    notify_requested = Signal(str, str)
 
     def __init__(self, icon: QIcon, store: ConfigStore, parent=None) -> None:
         super().__init__(icon, parent)
@@ -48,6 +49,7 @@ class Tray(QSystemTrayIcon):
             self._act_autostart.blockSignals(True)
             self._act_autostart.setChecked(autostart.is_enabled())
             self._act_autostart.blockSignals(False)
+            self.notify_requested.emit("开机自启设置失败", "注册表写入被拒绝,请检查杀毒软件或权限")
 
     def _update_tooltip(self) -> None:
         self.setToolTip(f"Lulen — 按 {self._store.settings.hotkey} 呼出面板")

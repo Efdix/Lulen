@@ -1,6 +1,7 @@
 """数据模型与配置持久化(原子写入 + 备份恢复)。
 
-配置位于 ``%APPDATA%/Lulen/config.json``;可用环境变量 ``LULEN_HOME``
+打包运行时配置位于 exe 同目录的 ``Lulen-Data/`` 子文件夹(便携式,不可写不兜底);
+源码运行时位于 ``%APPDATA%/Lulen``。可用环境变量 ``LULEN_HOME``
 覆盖为任意目录(测试 / 便携模式)。
 """
 from __future__ import annotations
@@ -9,12 +10,14 @@ import json
 import os
 import re
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import ClassVar
 
 from . import APP_NAME
+from .shortcuts import resolve_lnk
 
 CONFIG_VERSION = 1
 URL_RE = re.compile(r"^(https?://|www\.)\S+$", re.IGNORECASE)
@@ -28,9 +31,36 @@ def new_id() -> str:
 
 
 def default_data_dir() -> Path:
-    """默认数据目录(也是指针文件的固定落脚点)。"""
+    """默认数据目录(也是指针文件的固定落脚点)。
+
+    打包运行跟随 exe 所在目录的 ``Lulen-Data`` 子文件夹(便携式);
+    源码运行用 ``%APPDATA%/Lulen``,避免污染仓库目录。不可写时不兜底。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "Lulen-Data"
     base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
     return Path(base) / APP_NAME
+
+
+def _migrate_legacy_dir(new_dir: Path) -> None:
+    """打包版首次切到 exe 旁默认目录时,把旧 ``%APPDATA%/Lulen`` 数据搬过来(一次性)。"""
+    if not getattr(sys, "frozen", False):
+        return
+    if (new_dir / "config.json").exists() or (new_dir / "data_dir.txt").exists():
+        return
+    base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    old = Path(base) / APP_NAME
+    if not (old / "config.json").is_file() and not (old / "data_dir.txt").is_file():
+        return
+    try:
+        new_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("config.json", "config.bak.json", "data_dir.txt"):
+            if (old / name).is_file():
+                shutil.copy2(old / name, new_dir / name)
+        if (old / "iconcache").is_dir():
+            shutil.copytree(old / "iconcache", new_dir / "iconcache", dirs_exist_ok=True)
+    except OSError:
+        pass
 
 
 def data_dir_pointer_path() -> Path:
@@ -70,10 +100,12 @@ def config_dir() -> Path:
     custom = os.environ.get("LULEN_HOME")
     if custom:
         return Path(custom)
+    default = default_data_dir()
+    _migrate_legacy_dir(default)
     pointed = read_data_dir_pointer()
     if pointed is not None:
         return pointed
-    return default_data_dir()
+    return default
 
 
 @dataclass
@@ -141,8 +173,8 @@ class Settings:
     hotkey: str = "Ctrl+Shift+Z"  # 呼出/隐藏面板的全局热键
     theme: str = "dark"  # dark / light
     accent: str = "#4F8CFF"
-    columns: int = 10
-    rows: int = 4
+    columns: int = 7
+    rows: int = 5
     icon_size: int = 48
     single_click: bool = True  # 单击启动(否则双击)
     hide_on_blur: bool = True  # 失焦自动隐藏
@@ -411,7 +443,11 @@ def guess_name(path: str) -> str:
 
 
 def make_items(paths: list[str]) -> list[Item]:
-    """把拖入的一批路径 / 网址转成条目列表。"""
+    """把拖入的一批路径 / 网址转成条目列表。
+
+    .lnk 快捷方式解析出真实目标后按目标建条目(桌面快捷方式被删不影响启动);
+    解析不出有效目标(如 UWP 快捷方式)则退回存 .lnk 原路径。
+    """
     items: list[Item] = []
     for raw in paths:
         p = (raw or "").strip()
@@ -421,6 +457,12 @@ def make_items(paths: list[str]) -> list[Item]:
             url = parse_url_file(p)
             if url:
                 items.append(Item.create("url", Path(p).stem, url))
+                continue
+        if p.lower().endswith(".lnk") and os.path.isfile(p):
+            info = resolve_lnk(p)
+            if info and info.path and os.path.exists(info.path):
+                items.append(Item.create(guess_type(info.path), Path(p).stem,
+                                         info.path, args=info.args, workdir=info.workdir))
                 continue
         t = guess_type(p)
         if t == "url" and "://" not in p:

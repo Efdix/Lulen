@@ -19,7 +19,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from lulen import APP_NAME, APP_VERSION, singleinstance, theme
+from lulen import APP_NAME, APP_VERSION, autostart, singleinstance, theme
 from lulen import hotkey as hk
 from lulen import icons as icons_mod
 from lulen.config import ConfigStore, Group, Item, new_id
@@ -183,6 +183,7 @@ def main() -> int:
     single.another_show.connect(panel.show_panel)
 
     tray = Tray(icons_mod.app_icon(store.settings.accent), store)
+    tray.notify_requested.connect(tray.notify)
     tray.toggle_requested.connect(panel.toggle)
     tray.show_settings.connect(panel.open_settings)
     tray.quit_requested.connect(app.quit)
@@ -198,6 +199,11 @@ def main() -> int:
 
     if QSystemTrayIcon.isSystemTrayAvailable():
         tray.show()
+
+    if not args.selftest and not args.screenshot:
+        action = autostart.sync(store.settings.autostart)
+        if action == "rewritten":
+            tray.notify(APP_NAME, "开机自启记录已修正为当前 exe 位置")
 
     app.aboutToQuit.connect(store.save)
     app.aboutToQuit.connect(hotkeys.unregister_all)

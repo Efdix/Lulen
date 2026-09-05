@@ -353,10 +353,12 @@ class LulenPanel(QWidget):
         if self._manual_size:
             rows = max(2, s.rows)  # 手动调过尺寸:高度完全由设置决定
         else:
-            # 高度自适应:实际行数 = clamp(ceil(条目数/列数), 1, 设定行数)
+            # 高度自适应:实际行数 = clamp(ceil(条目数/列数), 收缩下限, 设定行数);
+            # 下限约为列数的 2/3,保证空面板/少量条目时仍是接近正方形的比例而非长条
+            min_rows = max(2, math.ceil(s.columns * 2 / 3))
             count = self.model.rowCount()
             used_rows = max(1, math.ceil(count / max(1, s.columns)))
-            rows = min(max(1, s.rows), used_rows)
+            rows = min(max(1, s.rows), max(min_rows, used_rows))
         h = 8 + 28 + 6 + rows * grid.height() + 10 + 2 * self._shadow_margin + 8 + 2
         self.resize(QSize(int(w), int(h)))
 
@@ -493,7 +495,8 @@ class LulenPanel(QWidget):
             self._touch()
 
     def event(self, e: QEvent) -> bool:
-        if self.store.settings.hide_on_blur:
+        # 锁定时面板常驻:失焦不隐藏(忽略 hide_on_blur)
+        if self.store.settings.hide_on_blur and not self.store.settings.locked:
             if e.type() == QEvent.Type.WindowDeactivate:
                 self._blur_timer.start()
             elif e.type() == QEvent.Type.WindowActivate:
@@ -504,6 +507,8 @@ class LulenPanel(QWidget):
         """宽限期到点后的隐藏判定:拖拽进行中 / 悬停中则等待,其余隐藏。"""
         if not (self.isVisible() and self.store.settings.hide_on_blur) or self._hiding:
             return
+        if self.store.settings.locked:
+            return  # 锁定 = 常驻,失焦不隐藏
         if self.isActiveWindow() or QApplication.activeWindow() is not None:
             return
         if QApplication.activePopupWidget() is not None:
@@ -753,7 +758,7 @@ class LulenPanel(QWidget):
             return  # 双击去抖
         self._last_launch = (item.id, now)
         ok, err = open_item(item)
-        if ok and self.store.settings.hide_after_launch:
+        if ok and self.store.settings.hide_after_launch and not self.store.settings.locked:
             self.hide_animated()
         elif not ok:
             self.notify_requested.emit("启动失败", f"{item.name}: {err}")
@@ -949,7 +954,7 @@ class LulenPanel(QWidget):
 
     def _launch_item_direct(self, item: Item, admin: bool = False) -> None:
         ok, err = open_item(item, run_as_admin=admin)
-        if ok and self.store.settings.hide_after_launch:
+        if ok and self.store.settings.hide_after_launch and not self.store.settings.locked:
             self.hide_animated()
         elif not ok:
             self.notify_requested.emit("启动失败", f"{item.name}: {err}")
@@ -959,7 +964,7 @@ class LulenPanel(QWidget):
             ok, err = open_item(it)
             if not ok:
                 self.notify_requested.emit("启动失败", f"{it.name}: {err}")
-        if self.store.settings.hide_after_launch:
+        if self.store.settings.hide_after_launch and not self.store.settings.locked:
             self.hide_animated()
 
     def _delete_items(self, ids: list) -> None:
@@ -1083,6 +1088,8 @@ class LulenPanel(QWidget):
 
     def _toggle_lock(self) -> None:
         self.store.settings.locked = not self.store.settings.locked
+        if self.store.settings.locked:
+            self.raise_()  # 置顶兜底:面板本就带 WindowStaysOnTopHint,锁定后再顶到最上层
         self.apply_settings()
         self._touch()
 
@@ -1095,6 +1102,7 @@ class LulenPanel(QWidget):
             self._settings_win.hotkey_change_failed.connect(
                 lambda t: self.notify_requested.emit("Lulen", f"热键 {t} 注册失败(可能被占用)")
             )
+            self._settings_win.notify_requested.connect(self.notify_requested.emit)
         self._settings_win.show()
         self._settings_win.raise_()
         self._settings_win.activateWindow()

@@ -188,25 +188,51 @@ class IconService(QObject):
 
 
 def app_icon(accent: str) -> QIcon:
-    """应用图标:圆角方块 + 渐变 + 白色 L。"""
-    pix = QPixmap(256, 256)
+    """应用图标:对角渐变圆角方块 + 顶部柔光 + 白色粗体 L(512px 绘制保证缩放清晰)。"""
+    from PySide6.QtGui import QPainterPath
+
+    s = 512
+    margin, radius = 28, 128
+    pix = QPixmap(s, s)
     pix.fill(Qt.GlobalColor.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    grad = QLinearGradient(0, 0, 0, 256)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
     c = QColor(accent)
-    grad.setColorAt(0.0, c.lightness(160) if c.lightness() < 150 else c)
-    grad.setColorAt(1.0, c.darker(135))
+    top = QColor(c.red() + (255 - c.red()) // 3, c.green() + (255 - c.green()) // 3,
+                 c.blue() + (255 - c.blue()) // 3)
+    grad = QLinearGradient(0, 0, s, s)
+    grad.setColorAt(0.0, top)
+    grad.setColorAt(1.0, c.darker(140))
+
+    plate = QPainterPath()
+    plate.addRoundedRect(QRectF(margin, margin, s - 2 * margin, s - 2 * margin), radius, radius)
     p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(0, 0, 0, 40))
+    p.drawRoundedRect(QRectF(margin, margin + 8, s - 2 * margin, s - 2 * margin), radius, radius)
     p.setBrush(grad)
-    p.drawRoundedRect(QRectF(12, 12, 232, 232), 56, 56)
-    p.setPen(QColor(255, 255, 255, 45))
-    p.setBrush(QColor(255, 255, 255, 28))
-    p.drawRoundedRect(QRectF(20, 20, 216, 100), 48, 48)
-    f = QFont("Segoe UI", 118)
+    p.drawPath(plate)
+
+    p.setClipPath(plate)
+    sheen = QLinearGradient(0, margin, 0, s * 0.8)
+    sheen.setColorAt(0.0, QColor(255, 255, 255, 60))
+    sheen.setColorAt(0.55, QColor(255, 255, 255, 18))
+    sheen.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.setBrush(sheen)
+    p.drawEllipse(QRectF(-s * 0.25, -s * 0.55, s * 1.5, s * 1.5))
+    p.setClipping(False)
+
+    f = QFont("Segoe UI", 300)
     f.setBold(True)
     p.setFont(f)
+    fm = p.fontMetrics()
+    tw, th = fm.horizontalAdvance("L"), fm.ascent() + fm.descent()
+    x = (s - tw) / 2
+    y = margin + (s - 2 * margin - th) / 2 + fm.ascent()
+    p.setPen(QColor(120, 40, 0, 60))
+    p.drawText(QPointF(x + 5, y + 8), "L")
     p.setPen(QColor("#FFFFFF"))
-    p.drawText(QRectF(12, 12, 232, 232), Qt.AlignmentFlag.AlignCenter, "L")
+    p.drawText(QPointF(x, y), "L")
     p.end()
     return QIcon(pix)
