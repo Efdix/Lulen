@@ -1,12 +1,11 @@
-"""图标服务:文件图标提取、网址 favicon 后台抓取、内置占位图标,统一缓存。"""
+"""图标服务:文件图标提取、网址图标(读本地缓存)、内置占位图标,统一缓存。"""
 from __future__ import annotations
 
 import hashlib
 import os
-import urllib.request
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QPointF, QRectF, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen, QPixmap
 
 try:  # Qt >= 6.7 时 QFileIconProvider 位于 QtGui
@@ -28,44 +27,14 @@ def _domain(url: str) -> str:
     return u.split("/")[0].split(":")[0]
 
 
-class _FaviconFetcher(QRunnable):
-    """工作线程里用 urllib 抓取站点图标(QNetworkAccessManager 需事件循环,线程内不便)。"""
-
-    def __init__(self, service: IconService, item_id: str, domain: str, out_file: Path) -> None:
-        super().__init__()
-        self._service = service
-        self._item_id = item_id
-        self._domain = domain
-        self._out_file = out_file
-
-    def run(self) -> None:  # pragma: no cover - 网络路径
-        for url in (f"https://favicon.im/{self._domain}?larger=true",
-                    f"https://api.iowen.cn/favicon/{self._domain}.png"):
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                data = urllib.request.urlopen(req, timeout=8).read()
-                pix = QPixmap()
-                if pix.loadFromData(data) and pix.width() >= 16:
-                    self._out_file.parent.mkdir(parents=True, exist_ok=True)
-                    pix.save(str(self._out_file))
-                    self._service._favicon_ready(self._item_id, self._domain)
-                    return
-            except Exception:
-                continue
-
-
 class IconService(QObject):
-    """条目 -> QIcon;favicon 到达后发 ``favicon_ready(item_id)``。"""
-
-    favicon_ready = Signal(str)
+    """条目 -> QIcon,统一内存缓存。"""
 
     def __init__(self, cache_dir: Path, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._cache_dir = Path(cache_dir)
         self._provider = QFileIconProvider()
         self._cache: dict[str, QIcon] = {}
-        self._fetching: set[str] = set()
-        self._pool = QThreadPool.globalInstance()
 
     # ---------- 对外 ----------
 
@@ -92,7 +61,6 @@ class IconService(QObject):
                 f = self._favicon_file(dom)
                 if f:
                     return QIcon(str(f))
-                self._request_favicon(item.id, dom)
             return self._globe()
         if item.icon:
             return self._icon_from_source(item.icon)
@@ -119,18 +87,6 @@ class IconService(QObject):
     def _favicon_file(self, domain: str) -> Path | None:
         f = self._cache_dir / f"fav-{hashlib.md5(domain.encode()).hexdigest()}.png"
         return f if f.exists() else None
-
-    def _request_favicon(self, item_id: str, domain: str) -> None:
-        if domain in self._fetching:
-            return
-        self._fetching.add(domain)
-        out = self._cache_dir / f"fav-{hashlib.md5(domain.encode()).hexdigest()}.png"
-        self._pool.start(_FaviconFetcher(self, item_id, domain, out))
-
-    def _favicon_ready(self, item_id: str, domain: str) -> None:
-        """工作线程回调(经 Qt 队列切回主线程)。"""
-        self._fetching.discard(domain)
-        self.favicon_ready.emit(item_id)
 
     # ---------- 占位图标(手绘,避免资源文件) ----------
 

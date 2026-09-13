@@ -23,11 +23,20 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'unittest', 'pydoc_data'],
+    # 软件完全离线:排除网络模块及其依赖的 DLL(select/_socket/_ssl/libssl/libcrypto)。
+    # Windows 运行路径没有任何代码会导入它们(subprocess 对 selectors 的引用仅在 POSIX 分支)。
+    excludes=['tkinter', 'unittest', 'pydoc_data',
+              'socket', 'select', 'selectors', 'ssl', '_ssl', '_socket'],
     noarchive=False,
     optimize=1,
 )
 pyz = PYZ(a.pure)
+
+# 完全离线:丢弃 Qt 网络栈(TLS 插件/Qt6Network)及其顺 PATH 搜进来的 OpenSSL DLL
+# (会误收 Git mingw64 的 libssl/libcrypto),纯本地启动路径永远不会加载它们。
+_DROP = ('qt6network', 'plugins\\tls\\', 'plugins/tls/', 'libssl-', 'libcrypto-')
+a.binaries = [b for b in a.binaries
+              if not any(d in b[0].lower() or d in b[1].lower() for d in _DROP)]
 
 exe = EXE(
     pyz,

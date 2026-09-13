@@ -1,6 +1,6 @@
 [project]
 name = "lulen"
-version = "0.6.0"
+version = "0.6.1"
 description = "Lulen — Windows 快速启动面板"
 requires-python = ">=3.12"
 dependencies = [

@@ -6,7 +6,7 @@ import math
 import os
 import subprocess
 import time
-import urllib.parse
+from ctypes import wintypes
 
 from PySide6.QtCore import (
     QEvent,
@@ -60,14 +60,59 @@ _SC_SIZE = {
     ("bottom",): 0xF006, ("left", "bottom"): 0xF007,
     ("bottom", "right"): 0xF008,
 }
-_CURSOR_BY_EDGE = {
-    ("left",): Qt.CursorShape.SizeHorCursor, ("right",): Qt.CursorShape.SizeHorCursor,
-    ("top",): Qt.CursorShape.SizeVerCursor, ("bottom",): Qt.CursorShape.SizeVerCursor,
-    ("left", "top"): Qt.CursorShape.SizeFDiagCursor,
-    ("bottom", "right"): Qt.CursorShape.SizeFDiagCursor,
-    ("top", "right"): Qt.CursorShape.SizeBDiagCursor,
-    ("left", "bottom"): Qt.CursorShape.SizeBDiagCursor,
+# 边缘 resize 光标与"还原"光标都直接用 Win32 预定义光标(IDC_*)。
+# 关键约束:SetCursor 之后不能只"放行给 Qt"——Qt 不知道我们改过光标,放行不等于
+# 清除,resize 光标会卡住;所以离开热区必须自己换回鼠标下控件的实际光标。
+_IDC_ARROW, _IDC_IBEAM, _IDC_WAIT, _IDC_CROSS = 32512, 32513, 32514, 32515
+_IDC_UPARROW, _IDC_SIZENWSE, _IDC_SIZENESW, _IDC_SIZEWE = 32516, 32642, 32643, 32644
+_IDC_SIZENS, _IDC_SIZEALL, _IDC_NO, _IDC_HAND = 32645, 32646, 32648, 32649
+_IDC_APPSTARTING, _IDC_HELP = 32650, 32651
+
+_IDC_BY_EDGE = {
+    ("left",): _IDC_SIZEWE, ("right",): _IDC_SIZEWE,
+    ("top",): _IDC_SIZENS, ("bottom",): _IDC_SIZENS,
+    ("left", "top"): _IDC_SIZENWSE, ("bottom", "right"): _IDC_SIZENWSE,
+    ("top", "right"): _IDC_SIZENESW, ("left", "bottom"): _IDC_SIZENESW,
 }
+_IDC_BY_SHAPE = {  # Qt 光标形状 → IDC_*(还原非热区光标用;未知形状回退箭头)
+    Qt.CursorShape.ArrowCursor: _IDC_ARROW,
+    Qt.CursorShape.UpArrowCursor: _IDC_UPARROW,
+    Qt.CursorShape.CrossCursor: _IDC_CROSS,
+    Qt.CursorShape.WaitCursor: _IDC_WAIT,
+    Qt.CursorShape.IBeamCursor: _IDC_IBEAM,
+    Qt.CursorShape.SizeVerCursor: _IDC_SIZENS,
+    Qt.CursorShape.SplitVCursor: _IDC_SIZENS,
+    Qt.CursorShape.SizeHorCursor: _IDC_SIZEWE,
+    Qt.CursorShape.SplitHCursor: _IDC_SIZEWE,
+    Qt.CursorShape.SizeFDiagCursor: _IDC_SIZENWSE,
+    Qt.CursorShape.SizeBDiagCursor: _IDC_SIZENESW,
+    Qt.CursorShape.SizeAllCursor: _IDC_SIZEALL,
+    Qt.CursorShape.ForbiddenCursor: _IDC_NO,
+    Qt.CursorShape.PointingHandCursor: _IDC_HAND,
+    Qt.CursorShape.BusyCursor: _IDC_APPSTARTING,
+    Qt.CursorShape.WhatsThisCursor: _IDC_HELP,
+}
+_HCURSOR_BY_IDC: dict[int, int] = {}
+
+_WM_SETCURSOR = 0x0020  # 显示光标前系统询问窗口光标形状的消息
+
+
+def _idc_hcursor(idc: int) -> int:
+    """取(必要时加载)Win32 预定义光标句柄;0 表示加载失败(不接管)。"""
+    hcur = _HCURSOR_BY_IDC.get(idc)
+    if hcur is None:
+        user32 = ctypes.windll.user32
+        user32.LoadCursorW.restype = wintypes.HANDLE
+        user32.SetCursor.argtypes = (wintypes.HANDLE,)
+        hcur = user32.LoadCursorW(None, wintypes.HANDLE(idc)) or 0
+        _HCURSOR_BY_IDC[idc] = hcur
+    return hcur
+
+
+def _resize_hcursor(sides: tuple[str, ...]) -> int:
+    """取边组合对应的 resize 光标句柄。"""
+    return _idc_hcursor(_IDC_BY_EDGE[sides])
+
 
 _RUN_DIALOG_CLSID = "shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}"
 _SEARCH_ENGINES = (
@@ -77,6 +122,17 @@ _SEARCH_ENGINES = (
     ("g ", "https://www.google.com/search?q={}"),
     ("d ", "https://duckduckgo.com/?q={}"),
 )
+
+
+def _percent_encode(text: str) -> str:
+    """UTF-8 百分号编码(等价 urllib.parse.quote 默认行为),避免为编码引入 urllib。"""
+    out = []
+    for ch in text:
+        if (ch.isascii() and ch.isalnum()) or ch in "_.-~/":
+            out.append(ch)
+        else:
+            out.extend(f"%{b:02X}" for b in ch.encode("utf-8"))
+    return "".join(out)
 
 
 class GridView(QListView):
@@ -182,7 +238,6 @@ class LulenPanel(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAcceptDrops(True)  # 面板整体(含页签条/边距)都能接住外部拖放
-        self.setMouseTracking(True)  # 顶层阴影边距区域也要能感知悬停(边缘缩放热区)
         self.installEventFilter(self)
         self.setWindowTitle("Lulen")
 
@@ -192,6 +247,7 @@ class LulenPanel(QWidget):
         self._drag_over = False  # 有 OLE 拖拽悬停在面板上
         self._hiding = False
         self._user_resizing = False  # 正在原生 SC_SIZE 循环中拖拽边缘
+        self._edge_cursor = False  # 当前显示的是我们自己设的边缘 resize 光标
         self._manual_size = False  # 用户手动拖拽过尺寸:高度不再自动收缩
         self._opacity_base = store.settings.opacity / 100
         self._last_launch: tuple[str, float] = ("", 0.0)
@@ -207,7 +263,6 @@ class LulenPanel(QWidget):
         self.model.modelReset.connect(self._update_empty)
         self.model.rowsInserted.connect(lambda *a: self._update_empty())
         self.model.rowsRemoved.connect(lambda *a: self._update_empty())
-        self.icons.favicon_ready.connect(self._on_favicon_ready)
         self.view.clicked.connect(self._on_clicked)
         self.view.doubleClicked.connect(self._on_double_clicked)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -239,7 +294,6 @@ class LulenPanel(QWidget):
 
         self.root = QFrame(self)
         self.root.setObjectName("root")
-        self.root.setMouseTracking(True)
         outer.addWidget(self.root)
 
         v = QVBoxLayout(self.root)
@@ -465,6 +519,45 @@ class LulenPanel(QWidget):
             sides.append("bottom")
         return tuple(sides) or None
 
+    def nativeEvent(self, event_type, message):  # Qt 覆写点,方法名固定
+        """WM_SETCURSOR:热区内给 resize 光标,离开时换回鼠标下控件的实际光标。
+
+        系统每次鼠标移动、显示光标前都会重问一遍,天然无状态;热区外不能"放行"
+        了事,否则上一次设的 resize 光标没人清除(Qt 不知道我们改过),会一直卡着。
+        """
+        if event_type == b"windows_generic_MSG":
+            msg = wintypes.MSG.from_address(int(message))
+            if msg.message == _WM_SETCURSOR and self._update_cursor(QCursor.pos()):
+                return True, 1
+        return super().nativeEvent(event_type, message)
+
+    def _update_cursor(self, gp: QPoint) -> bool:
+        """按全局坐标接管本窗口光标;返回 True 表示已处理,系统无需再问别人。"""
+        root = getattr(self, "root", None)
+        if (root is None or self._user_resizing
+                or not self.isVisible() or not root.isVisible()):
+            return False  # 构建早期 / 原生调整循环中(系统自管光标)/ 不可见
+        if self._drag_offset is not None or self.store.settings.locked:
+            sides = None  # 拖动面板中或锁定时没有边缘热区
+        else:
+            sides = self._edge_at(gp)
+        if sides is not None:
+            hcur = _resize_hcursor(sides)
+            if hcur:
+                self._edge_cursor = True
+                ctypes.windll.user32.SetCursor(wintypes.HANDLE(hcur))
+                return True
+        if not self._edge_cursor:
+            return False  # 没设过边缘光标:不归我们管,交回 Qt
+        w = QApplication.widgetAt(gp)
+        shape = w.cursor().shape() if w is not None else Qt.CursorShape.ArrowCursor
+        self._edge_cursor = False
+        hcur = _idc_hcursor(_IDC_BY_SHAPE.get(shape, _IDC_ARROW))
+        if not hcur:
+            return False
+        ctypes.windll.user32.SetCursor(wintypes.HANDLE(hcur))
+        return True
+
     def _start_native_resize(self, sc_size: int) -> None:
         """进入 Win32 原生调整循环(跟随鼠标实时缩放),结束后把尺寸回写设置。"""
         if os.environ.get("LULEN_DEBUG"):
@@ -592,16 +685,6 @@ class LulenPanel(QWidget):
             return False  # 构建早期,过滤目标尚未创建
         if obj is self.root or obj is self:
             t = ev.type()
-            if t == QEvent.Type.MouseMove and not self.store.settings.locked:
-                sides = self._edge_at(ev.globalPosition().toPoint())
-                if sides is not None:
-                    self.root.setCursor(_CURSOR_BY_EDGE[sides])
-                else:
-                    self.root.unsetCursor()
-                return False
-            if t == QEvent.Type.Leave:
-                self.root.unsetCursor()
-                return False
             if (t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton
                     and not self.store.settings.locked):
                 sides = self._edge_at(ev.globalPosition().toPoint())
@@ -725,7 +808,7 @@ class LulenPanel(QWidget):
             return
         for prefix, tpl in _SEARCH_ENGINES:
             if text.lower().startswith(prefix):
-                q = urllib.parse.quote(text[len(prefix):].strip())
+                q = _percent_encode(text[len(prefix):].strip())
                 if q:
                     QDesktopServices.openUrl(tpl.format(q))
                 self._close_cmd()
@@ -1016,12 +1099,6 @@ class LulenPanel(QWidget):
                 self.hotkeys.unregister_item(item.hotkey)
             item.hotkey = ""
         self._touch()
-
-    def _on_favicon_ready(self, item_id: str) -> None:
-        _, item = self.store.find_item(item_id)
-        if item is not None:
-            self.icons.invalidate(item)
-            self.model.refresh_item(item_id)
 
     # ================= 分组操作 =================
 

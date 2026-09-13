@@ -318,6 +318,34 @@ def main() -> int:
     check("tab area shows arrow cursor",
           bar.cursor().shape() == Qt.CursorShape.ArrowCursor)
 
+    # ---------- 12c. 边缘光标改由 WM_SETCURSOR 接管:root 不再常驻/卡死光标 ----------
+    import lulen.panel as lulen_panel
+
+    def hover_root(gp: QPoint) -> None:
+        ev2 = QMouseEvent(QEvent.Type.MouseMove, QPointF(panel.root.mapFromGlobal(gp)),
+                          Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+                          Qt.KeyboardModifier.NoModifier)
+        panel._event_filter_impl(panel.root, ev2)
+
+    was_locked = panel.store.settings.locked
+    panel.store.settings.locked = False
+    hover_root(gp_left)  # 边缘悬停不得在 root 上设常驻光标(旧实现的卡死根因)
+    check("edge hover leaves root cursor clean",
+          not panel.root.testAttribute(Qt.WidgetAttribute.WA_SetCursor))
+    hover_root(gp_mid)  # 移入中部同样不得设
+    check("middle hover leaves root cursor clean",
+          not panel.root.testAttribute(Qt.WidgetAttribute.WA_SetCursor))
+    # 行为:热区设 resize,离开热区必须归还鼠标下控件的实际光标(否则会一直卡着)
+    check("idle cursor untouched", panel._update_cursor(gp_mid) is False)
+    check("edge cursor applied", panel._update_cursor(gp_left) is True)
+    check("cursor restored after edge", panel._update_cursor(gp_mid) is True)
+    check("restore happens once", panel._update_cursor(gp_mid) is False)
+    panel.store.settings.locked = True
+    check("locked panel no resize cursor", panel._update_cursor(gp_left) is False)
+    panel.store.settings.locked = was_locked
+    check("win32 resize cursors loaded",
+          all(lulen_panel._resize_hcursor(k) for k in lulen_panel._IDC_BY_EDGE))
+
     # ---------- 13. 跨分组拖拽:页签落下,快速落与悬停切换两种时序 ----------
     store.current_group = 0
     panel.model.set_group(store.group().items)
